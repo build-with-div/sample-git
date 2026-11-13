@@ -5,12 +5,14 @@ a native Rust UI framework. It is a sample app: it uses only Div's public API,
 and part of its job is to find what Div is still missing.
 
 Status: early. You can keep a list of repositories, see each one's status,
-and stage or unstage files while reading their diffs. Committing, history,
-branches and remotes land in small steps. See [docs/design.md](docs/design.md)
+stage or unstage files while reading their diffs, discard changes (after a
+confirmation) and commit. History, branches and remotes land in small steps. See [docs/design.md](docs/design.md)
 for the plan and [docs/framework-gaps.md](docs/framework-gaps.md) for the Div
 gaps found so far.
 
-![The Changes tab on Windows, with three fixture repositories](docs/screenshots/changes-tab.png)
+![The Changes tab on Windows, with three fixture repositories and a commit message](docs/screenshots/commit-box.png)
+
+![Discarding a file's changes asks first](docs/screenshots/discard-confirm.png)
 
 ## Build and run
 

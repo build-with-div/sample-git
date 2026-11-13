@@ -19,16 +19,20 @@ Pinned Div: `03573e7d`.
 | --- | --- | --- | --- | --- |
 | [1](#1-no-hover-styling) | No `:hover` styling | engine: style | workaround | open |
 | [3](#3-dynamic-style-values-need-typed-values) | Dynamic style values need typed values | framework: macros | workaround | open |
+| [4](#4-common-style-literals-are-rejected) | Common style literals are rejected | engine: style; framework: macros | workaround | open |
 | [5](#5-onclick-on-a-component-is-silently-dropped) | `on:click` on a component is silently dropped | framework: macros; components | workaround | open |
 | [6](#6-for-and-show-cannot-be-children-in-view) | `For`/`Show` cannot be children in `view!` | framework: macros | workaround | open |
 | [7](#7-optional-component-props-are-not-filled) | Optional component props are not filled | framework: macros | workaround | open |
 | [8](#8-no-virtualized-list) | No virtualized list | framework; components | workaround: long diffs are cut | open |
+| [10](#10-keys-are-matched-by-code) | Keys are matched by code | framework: events | workaround | open |
+| [14](#14-no-dialog-or-top-layer) | No dialog or top layer | framework: dialog; engine: top layer | workaround | open |
 | [20](#20-no-app-data-directory) | No app data directory | framework: platform | workaround | open |
 | [21](#21-no-window-activation-event) | No window activation event | framework: platform | workaround | open |
 | [23](#23-dynamic-attributes-are-set-once-and-disabledfalse-disables) | Dynamic attributes are set once, and `disabled={false}` disables | framework: macros | workaround | open |
 | [24](#24-a-fresh-lockfile-does-not-build-on-linux) | A fresh lockfile does not build on Linux | framework: packaging | blocks Linux builds | open |
 | [25](#25-current_document-panics-when-an-effect-re-runs) | `current_document()` panics when an effect re-runs | framework: reactive | workaround | open |
 | [26](#26-layout-time-grows-exponentially-with-nested-flex-containers) | Layout time grows exponentially with nested flex containers | engine: layout | blocked the diff view; workaround | open |
+| [27](#27-a-textarea-ignores-its-padding-and-greys-no-placeholder) | A textarea ignores its padding and greys no placeholder | engine: forms | workaround | open |
 
 ## 1. No hover styling
 
@@ -58,6 +62,29 @@ CSS value: `background-color` takes a `Color`, `border-right-color` a
 Workaround: `ui/style.rs` converts the theme tokens to typed colors once
 (`Colors`, with `border_line` for border colors), and dynamic lengths use
 `LengthValue::px`.
+
+## 4. Common style literals are rejected
+
+Tried, in `view!` and `style!`:
+
+```rust
+style:inset="0"
+style:flex="1"
+style:cursor="col-resize"
+style:border-width="1px"   style:border-style="solid"   style:border-color={c.border_line}
+style:border-top-width="1px"
+style:resize="none"
+```
+
+Happened: compile errors. `inset`, `flex`, `border-width`, `border-style`
+and `border-color` are "unknown Div style property"; `cursor: col-resize`
+and `resize: none` are invalid literals; `border-top-width` takes a bare
+integer (`"1"`) and rejects `"1px"`, which CSS and Chromium accept.
+
+Workaround: longhands everywhere (`top`/`right`/`bottom`/`left`,
+`flex-grow`, the twelve `border-<side>-<part>` properties), unitless border
+widths, no resize cursor, and the textarea keeps the default `resize`.
+Marked `div-gap: 4` where a box needs all four borders.
 
 ## 5. `on:click` on a component is silently dropped
 
@@ -121,6 +148,32 @@ frame from gap 26 in place, a 1,500-line diff took about 2.6 s to show
 Workaround: `ui::diff_view::LINE_LIMIT` (500) lines are shown, with
 "Show full diff" to build the rest. Rows are built with `Element` calls
 rather than `view!`, so static lines carry no effects.
+
+## 10. Keys are matched by code
+
+Tried: Ctrl+Enter in the commit message box and Escape in the confirmation
+dialog.
+
+Happened: `on:keydown` works, but the `Event` gives `key_code` (13, 27),
+`key_text` and a raw `modifiers` bitmask (`i32`, while `Modifiers` holds a
+`u32`). Named keys (`Event::key()`) are in RFC 0003 (b) and not public.
+
+Workaround: `ENTER` and `ESCAPE` constants and a cast of `modifiers`
+against `Modifiers::CTRL | Modifiers::META`. Marked `div-gap: 10`.
+
+## 14. No dialog or top layer
+
+Tried: asking before discarding a file's changes or deleting an untracked
+file.
+
+Happened: there is no `<dialog>`, top layer or native message box in the
+public API.
+
+Workaround (`ui/confirm.rs`): a scrim absolutely positioned over the whole
+window with `z-index: 10` and a card in the middle. After it mounts,
+`Document::set_modal_root` limits input to it and Cancel takes focus;
+Escape cancels. `tests/ui_commit.rs` checks that a click on a button under
+the scrim does nothing. Marked `div-gap: 14`.
 
 ## 20. No app data directory
 
@@ -244,3 +297,28 @@ fixed offsets for the toolbar (48px), the tab list (12px + 36px + 8px) and
 the sidebar header (81px). Flex is used only inside rows, the toolbar and
 the status bar. The diff then takes about 2.6 s for 1,500 lines (gap 8).
 Marked `div-gap: 26`.
+
+## 27. A textarea ignores its padding and greys no placeholder
+
+Tried:
+
+```rust
+view! {
+    <textarea placeholder="Commit message" style:padding="8px" style:box-sizing="border-box"
+        style:width="300px" style:height="80px"></textarea>
+}
+```
+
+Happened (headless `TestApp` and the native window on Windows): the text
+starts at the textarea's border edge; the 8px padding moves nothing,
+although `computed_style().padding_left` is 8px. The placeholder is drawn
+in the text color; Chromium draws it grey.
+Typing, `on:input`, `control_value` and `set_control_value` work.
+
+Area: engine, form controls (textarea text box and `::placeholder`).
+
+Workaround (`ui/changes.rs`): the border and padding are on a box around a
+borderless textarea that fills it, and "Commit message" is a muted label
+over the textarea, shown while the message is empty, with
+`pointer-events: none`. A click on the box's padding focuses the textarea.
+Marked `div-gap: 27`.

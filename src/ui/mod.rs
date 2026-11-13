@@ -1,6 +1,7 @@
 //! The views. [`root`] is the whole window.
 
 mod changes;
+mod confirm;
 pub mod diff_view;
 mod shell;
 mod sidebar;

@@ -2,6 +2,7 @@
 
 use crate::actions;
 use crate::ui::changes::changes_panel;
+use crate::ui::confirm::confirm_dialog;
 use crate::ui::sidebar::sidebar;
 use crate::ui::style::{colors, Slot, SlotProps};
 use crate::ui::widgets::action_button;
@@ -43,6 +44,7 @@ pub fn root(state: State) -> ViewNode {
             <Slot view={sidebar(state)} />
             <Slot view={main_area(state)} />
             <Slot view={status_bar(state)} />
+            <Slot view={confirm_dialog(state)} />
         </div>
     }
 }
