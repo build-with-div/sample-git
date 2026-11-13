@@ -7,6 +7,7 @@ use crate::git::Git;
 use div::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 /// The tabs of the main area.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +122,17 @@ pub enum DiffState {
     Failed(String),
 }
 
+/// A question the confirmation dialog asks before an action that can lose
+/// work.
+#[derive(Clone)]
+pub struct Confirm {
+    pub title: String,
+    pub body: String,
+    /// The label of the button that goes ahead.
+    pub action: String,
+    pub run: Rc<dyn Fn()>,
+}
+
 #[derive(Clone, Copy)]
 pub struct State {
     /// The selected tab, as its [`Tab::value`].
@@ -142,6 +154,10 @@ pub struct State {
     pub full_diff: Signal<bool>,
     /// A command that changes the selected repository is running.
     pub busy: Signal<bool>,
+    /// The commit message being written.
+    pub message: Signal<String>,
+    /// The open confirmation dialog, if any.
+    pub confirm: Signal<Option<Confirm>>,
 }
 
 impl State {
@@ -164,6 +180,8 @@ impl State {
             diff: create_signal(DiffState::Empty),
             full_diff: create_signal(false),
             busy: create_signal(false),
+            message: create_signal(String::new()),
+            confirm: create_signal(None),
         }
     }
 
@@ -182,6 +200,16 @@ impl State {
             .get()
             .filter(|(path, _)| *path == selected)
             .map(|(_, status)| status)
+    }
+
+    /// Whether the Commit button can run: something is staged, there is
+    /// a message, and no other command is running.
+    pub fn can_commit(&self) -> bool {
+        !self.busy.get()
+            && !self.message.get().trim().is_empty()
+            && self
+                .selected_status()
+                .is_some_and(|status| status.staged().next().is_some())
     }
 
     /// The selected repository, if any.

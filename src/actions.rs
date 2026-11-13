@@ -4,10 +4,11 @@
 
 use crate::git::diff::{self, Source};
 use crate::git::{repo, status, Error, Git};
-use crate::state::{DiffState, FileSelection, Repo, State, Summary};
+use crate::state::{Confirm, DiffState, FileSelection, Repo, State, Summary};
 use crate::store;
 use div::task::{spawn_blocking, spawn_local};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 /// How deep "Scan folder" looks, and how many repositories it adds at most.
 pub const SCAN_DEPTH: usize = 3;
@@ -214,6 +215,16 @@ fn mutate(
     done: impl Into<String>,
     operation: impl FnOnce(&Git, &Path) -> Result<(), Error> + Send + 'static,
 ) {
+    mutate_then(state, done, operation, || {});
+}
+
+/// [`mutate`], running `succeeded` on the UI thread if the operation worked.
+fn mutate_then(
+    state: State,
+    done: impl Into<String>,
+    operation: impl FnOnce(&Git, &Path) -> Result<(), Error> + Send + 'static,
+    succeeded: impl FnOnce() + 'static,
+) {
     let Some(repo) = state.selected.get() else {
         return;
     };
@@ -227,10 +238,13 @@ fn mutate(
         let path = repo.clone();
         let result = spawn_blocking(move || operation(&git, &path)).await;
         state.busy.set(false);
-        state.status.set(match result {
-            Ok(()) => done,
-            Err(error) => error.summary(),
-        });
+        match result {
+            Ok(()) => {
+                state.status.set(done);
+                succeeded();
+            }
+            Err(error) => state.status.set(error.summary()),
+        }
         refresh(state, repo);
     })
     .detach();
@@ -277,6 +291,70 @@ pub fn unstage_all(state: State) {
     mutate(state, "Unstaged all changes", |git, repo| {
         repo::unstage_all(git, repo)
     });
+}
+
+/// Commit what is staged with the message being written, then clear it.
+/// Hooks and signing run as they would on the command line.
+pub fn commit(state: State) {
+    if !state.can_commit() {
+        return;
+    }
+    let message = state.message.get();
+    let subject = message.lines().next().unwrap_or_default().trim().to_owned();
+    mutate_then(
+        state,
+        format!("Committed: {subject}"),
+        move |git, repo| repo::commit(git, repo, &message),
+        move || state.message.set(String::new()),
+    );
+}
+
+/// Ask, then throw away the unstaged changes to `path`; an untracked file
+/// is deleted.
+pub fn ask_discard(state: State, path: String, untracked: bool) {
+    let (title, body, action) = if untracked {
+        (
+            format!("Delete {path}?"),
+            "This file is not tracked by git, so it will be deleted. This cannot be undone.",
+            "Delete file",
+        )
+    } else {
+        (
+            format!("Discard changes to {path}?"),
+            "The changes to this file that are not staged will be lost. This cannot be undone.",
+            "Discard changes",
+        )
+    };
+    state.confirm.set(Some(Confirm {
+        title,
+        body: body.to_owned(),
+        action: action.to_owned(),
+        run: Rc::new(move || discard(state, path.clone(), untracked)),
+    }));
+}
+
+fn discard(state: State, path: String, untracked: bool) {
+    let done = if untracked {
+        format!("Deleted {path}")
+    } else {
+        format!("Discarded changes to {path}")
+    };
+    mutate(state, done, move |git, repo| {
+        repo::discard(git, repo, &path, untracked)
+    });
+}
+
+/// Close the confirmation dialog without doing anything.
+pub fn cancel_confirm(state: State) {
+    state.confirm.set(None);
+}
+
+/// Close the confirmation dialog and run its action.
+pub fn accept_confirm(state: State) {
+    if let Some(confirm) = state.confirm.get() {
+        state.confirm.set(None);
+        (confirm.run)();
+    }
 }
 
 /// Add the repository containing `folder`, select it and refresh it. A
