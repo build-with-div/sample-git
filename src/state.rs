@@ -1,6 +1,8 @@
 //! App state shared by the views and the menu. Signals are cheap handles,
 //! so the struct is `Copy`.
 
+use crate::git::diff::FileDiff;
+use crate::git::status::Status;
 use crate::git::Git;
 use div::prelude::*;
 use std::collections::HashMap;
@@ -99,6 +101,26 @@ impl Summary {
     }
 }
 
+/// The file whose diff is shown in the Changes tab.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileSelection {
+    pub path: String,
+    /// The staged side (index against HEAD) rather than the unstaged one.
+    pub staged: bool,
+    /// Not tracked yet: diffed against nothing, discarded by deleting.
+    pub untracked: bool,
+}
+
+/// The diff pane's content.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum DiffState {
+    #[default]
+    Empty,
+    Loading,
+    Ready(FileDiff),
+    Failed(String),
+}
+
 #[derive(Clone, Copy)]
 pub struct State {
     /// The selected tab, as its [`Tab::value`].
@@ -112,6 +134,14 @@ pub struct State {
     pub repos: Signal<Vec<Repo>>,
     pub summaries: Signal<HashMap<PathBuf, Summary>>,
     pub selected: Signal<Option<PathBuf>>,
+    /// The full status of the selected repository, with its path.
+    pub detail: Signal<Option<(PathBuf, Status)>>,
+    pub file: Signal<Option<FileSelection>>,
+    pub diff: Signal<DiffState>,
+    /// Show every line of a long diff instead of the first part.
+    pub full_diff: Signal<bool>,
+    /// A command that changes the selected repository is running.
+    pub busy: Signal<bool>,
 }
 
 impl State {
@@ -129,6 +159,11 @@ impl State {
             repos: create_signal(Vec::new()),
             summaries: create_signal(HashMap::new()),
             selected: create_signal(None),
+            detail: create_signal(None),
+            file: create_signal(None),
+            diff: create_signal(DiffState::Empty),
+            full_diff: create_signal(false),
+            busy: create_signal(false),
         }
     }
 
@@ -138,6 +173,15 @@ impl State {
 
     pub fn summary(&self, path: &Path) -> Summary {
         self.summaries.get().get(path).cloned().unwrap_or_default()
+    }
+
+    /// The selected repository's status, if it is loaded.
+    pub fn selected_status(&self) -> Option<Status> {
+        let selected = self.selected.get()?;
+        self.detail
+            .get()
+            .filter(|(path, _)| *path == selected)
+            .map(|(_, status)| status)
     }
 
     /// The selected repository, if any.

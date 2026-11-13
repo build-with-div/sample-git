@@ -22,10 +22,13 @@ Pinned Div: `03573e7d`.
 | [5](#5-onclick-on-a-component-is-silently-dropped) | `on:click` on a component is silently dropped | framework: macros; components | workaround | open |
 | [6](#6-for-and-show-cannot-be-children-in-view) | `For`/`Show` cannot be children in `view!` | framework: macros | workaround | open |
 | [7](#7-optional-component-props-are-not-filled) | Optional component props are not filled | framework: macros | workaround | open |
+| [8](#8-no-virtualized-list) | No virtualized list | framework; components | workaround: long diffs are cut | open |
 | [20](#20-no-app-data-directory) | No app data directory | framework: platform | workaround | open |
 | [21](#21-no-window-activation-event) | No window activation event | framework: platform | workaround | open |
 | [23](#23-dynamic-attributes-are-set-once-and-disabledfalse-disables) | Dynamic attributes are set once, and `disabled={false}` disables | framework: macros | workaround | open |
 | [24](#24-a-fresh-lockfile-does-not-build-on-linux) | A fresh lockfile does not build on Linux | framework: packaging | blocks Linux builds | open |
+| [25](#25-current_document-panics-when-an-effect-re-runs) | `current_document()` panics when an effect re-runs | framework: reactive | workaround | open |
+| [26](#26-layout-time-grows-exponentially-with-nested-flex-containers) | Layout time grows exponentially with nested flex containers | engine: layout | blocked the diff view; workaround | open |
 
 ## 1. No hover styling
 
@@ -104,6 +107,21 @@ missing). RFC 0003 (c) is changing `view!` to a builder that fills them.
 
 Workaround: every prop is given at each call site.
 
+## 8. No virtualized list
+
+Tried: rendering every line of a diff, one row element per line, in a
+scrolling pane.
+
+Happened: there is no virtualized or windowed list in divui or
+div-components, so every line is built and laid out. Headless, with the
+frame from gap 26 in place, a 1,500-line diff took about 2.6 s to show
+(`TestApp`, debug build of this crate, dependencies at `opt-level` 2), about
+1.7 ms a line.
+
+Workaround: `ui::diff_view::LINE_LIMIT` (500) lines are shown, with
+"Show full diff" to build the rest. Rows are built with `Element` calls
+rather than `view!`, so static lines carry no effects.
+
 ## 20. No app data directory
 
 Div has no API for a per-user app data or config folder.
@@ -163,3 +181,66 @@ zbus release that builds with the latest macros.
 Workaround: `Cargo.lock` was replaced with Div's `Cargo.lock` at the pinned
 commit and Cargo pruned it to this app's dependencies. Bumping the pin
 should repeat this. Marked `div-gap: 24` in `Cargo.toml`.
+
+## 25. `current_document()` panics when an effect re-runs
+
+Tried, in a component:
+
+```rust
+create_effect(move || {
+    let diff = state.diff.get();
+    let row = Element::create(&current_document(), "div").unwrap();
+    // ...
+});
+```
+
+Happened: the first run works; the next run, after `state.diff` changes,
+panics with "current_document() called outside with_document()". Effects
+re-run from the scheduler, outside the document context that component
+code runs in, so `view!` and `current_document()` cannot be used in an
+effect that builds elements.
+
+Area: framework, reactive runtime. An effect could re-run inside the
+document it was created in.
+
+Workaround: `ui::diff_view` captures the `Document` when the component is
+built and passes it to the helpers that create rows. Marked `div-gap: 25`.
+
+## 26. Layout time grows exponentially with nested flex containers
+
+Tried: the usual app frame of nested flex columns (window → row of sidebar
+and main → main column → tabs column → panel → flex row of file list and
+diff pane), with a diff of 1,500 rows in the pane.
+
+Happened: clicking a file took 256 s headless before the diff showed, and
+"Show full diff" (1,700 rows) another 290 s. A probe
+([`docs/probes/flex_depth.rs`](probes/flex_depth.rs)) appends 100 rows
+(a flex row with three spans each) to a scrolling element under `depth`
+nested `display: flex; flex-direction: column; flex-grow: 1; min-height: 0`
+containers, then calls `run_until_idle`:
+
+| depth | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| nested flex columns | 0.27 s | 0.56 s | 1.27 s | 2.89 s | 6.53 s | 14.9 s | 34.1 s |
+| nested blocks (`height: 100%`) | 0.16 s | | | 0.15 s | | | 0.16 s |
+
+Each flex level multiplies the time by about 2.2, which looks like a flex
+container laying out its items again for each measuring pass, with no
+cached result. Giving the levels `height: 100%` instead of `flex-grow`,
+or making the scroller absolutely positioned inside the last flex level,
+does not change the growth. A single `white-space: pre` element holding
+the 100 lines costs the same as 100 rows, and 1,500 lines in one element
+did not finish in ten minutes.
+
+Measured on Windows 11, `TestApp` (headless), dependencies at
+`opt-level` 2; the release window app was not measured.
+
+Area: engine, layout (flex). Severity: blocked the diff view; any deep
+flex layout with many descendants is affected.
+
+Workaround: the window frame is absolutely positioned blocks (sidebar,
+main area, status bar, tabs root, tab panels, the Changes panes), with
+fixed offsets for the toolbar (48px), the tab list (12px + 36px + 8px) and
+the sidebar header (81px). Flex is used only inside rows, the toolbar and
+the status bar. The diff then takes about 2.6 s for 1,500 lines (gap 8).
+Marked `div-gap: 26`.

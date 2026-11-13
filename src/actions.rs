@@ -2,8 +2,9 @@
 //! results come back to the UI thread in `spawn_local` tasks, which write
 //! them into the state's signals.
 
+use crate::git::diff::{self, Source};
 use crate::git::{repo, status, Error, Git};
-use crate::state::{Repo, State, Summary};
+use crate::state::{DiffState, FileSelection, Repo, State, Summary};
 use crate::store;
 use div::task::{spawn_blocking, spawn_local};
 use std::path::{Path, PathBuf};
@@ -24,7 +25,7 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
     }
 }
 
-fn summarize(result: Result<status::Status, Error>) -> Summary {
+fn summarize(result: &Result<status::Status, Error>) -> Summary {
     match result {
         Ok(status) => Summary::Ready {
             branch: status.branch.head.clone(),
@@ -98,7 +99,7 @@ pub fn refresh_all(state: State) {
                 .collect();
             for task in tasks {
                 let (path, result) = task.await;
-                set_summary(state, path, summarize(result));
+                apply_status(state, path, result);
             }
         }
     })
@@ -111,9 +112,171 @@ pub fn refresh(state: State, path: PathBuf) {
     spawn_local(async move {
         let probe = path.clone();
         let result = spawn_blocking(move || status::status(&git, &probe)).await;
-        set_summary(state, path, summarize(result));
+        apply_status(state, path, result);
     })
     .detach();
+}
+
+/// Record a status: the list's summary, and for the selected repository
+/// the Changes tab's lists and diff.
+fn apply_status(state: State, path: PathBuf, result: Result<status::Status, Error>) {
+    set_summary(state, path.clone(), summarize(&result));
+    if state.selected.get().as_deref() != Some(path.as_path()) {
+        return;
+    }
+    match result {
+        Ok(status) => {
+            // The selected file, if it is still in the list it was in.
+            let file = state.file.get().and_then(|file| {
+                let entry = status
+                    .entries
+                    .iter()
+                    .find(|entry| entry.path == file.path)?;
+                let change = if file.staged {
+                    entry.staged
+                } else {
+                    entry.unstaged
+                }?;
+                Some(FileSelection {
+                    untracked: change == status::Change::Untracked,
+                    ..file
+                })
+            });
+            state.detail.set(Some((path, status)));
+            match file {
+                Some(file) => {
+                    if state.file.get().as_ref() != Some(&file) {
+                        state.file.set(Some(file));
+                    }
+                    load_diff(state);
+                }
+                None => {
+                    state.file.set(None);
+                    state.diff.set(DiffState::Empty);
+                }
+            }
+        }
+        Err(_) => state.detail.set(None),
+    }
+}
+
+/// The selected repository changed: forget the old file and load the new
+/// repository's status.
+pub fn selection_changed(state: State, selected: Option<PathBuf>) {
+    state.file.set(None);
+    state.diff.set(DiffState::Empty);
+    state.detail.set(None);
+    if let Some(path) = selected {
+        refresh(state, path);
+    }
+}
+
+/// Show the diff of `file` in the selected repository.
+pub fn select_file(state: State, file: FileSelection) {
+    state.full_diff.set(false);
+    state.file.set(Some(file));
+    load_diff(state);
+}
+
+fn load_diff(state: State) {
+    let (Some(repo), Some(file)) = (state.selected.get(), state.file.get()) else {
+        state.diff.set(DiffState::Empty);
+        return;
+    };
+    if !matches!(state.diff.get(), DiffState::Ready(_)) {
+        state.diff.set(DiffState::Loading);
+    }
+    let git = state.git.get();
+    spawn_local(async move {
+        let source = match (file.staged, file.untracked) {
+            (true, _) => Source::Staged,
+            (false, true) => Source::Untracked,
+            (false, false) => Source::Unstaged,
+        };
+        let path = file.path.clone();
+        let result = spawn_blocking(move || diff::diff_file(&git, &repo, &path, &source)).await;
+        // Drop the answer if the user picked another file meanwhile.
+        if state.file.get().as_ref() != Some(&file) {
+            return;
+        }
+        state.diff.set(match result {
+            Ok(diff) => DiffState::Ready(diff),
+            Err(error) => DiffState::Failed(error.summary()),
+        });
+    })
+    .detach();
+}
+
+/// Run `operation` on the selected repository on the blocking pool, with
+/// the busy flag set, then refresh. Errors go to the status bar.
+fn mutate(
+    state: State,
+    done: impl Into<String>,
+    operation: impl FnOnce(&Git, &Path) -> Result<(), Error> + Send + 'static,
+) {
+    let Some(repo) = state.selected.get() else {
+        return;
+    };
+    if state.busy.get() {
+        return;
+    }
+    let done = done.into();
+    let git = state.git.get();
+    state.busy.set(true);
+    spawn_local(async move {
+        let path = repo.clone();
+        let result = spawn_blocking(move || operation(&git, &path)).await;
+        state.busy.set(false);
+        state.status.set(match result {
+            Ok(()) => done,
+            Err(error) => error.summary(),
+        });
+        refresh(state, repo);
+    })
+    .detach();
+}
+
+/// Follow a staged or unstaged file to the other list.
+fn move_selection(state: State, paths: Option<&[String]>, staged: bool) {
+    if let Some(file) = state.file.get() {
+        if paths.is_none_or(|paths| paths.contains(&file.path)) {
+            state.file.set(Some(FileSelection {
+                staged,
+                untracked: false,
+                ..file
+            }));
+        }
+    }
+}
+
+pub fn stage(state: State, path: String) {
+    let paths = vec![path.clone()];
+    move_selection(state, Some(&paths), true);
+    mutate(state, format!("Staged {path}"), move |git, repo| {
+        repo::stage(git, repo, &paths)
+    });
+}
+
+pub fn unstage(state: State, path: String) {
+    let paths = vec![path.clone()];
+    move_selection(state, Some(&paths), false);
+    mutate(state, format!("Unstaged {path}"), move |git, repo| {
+        repo::unstage(git, repo, &paths)
+    });
+}
+
+pub fn stage_all(state: State) {
+    move_selection(state, None, true);
+    mutate(state, "Staged all changes", |git, repo| {
+        repo::stage_all(git, repo)
+    });
+}
+
+pub fn unstage_all(state: State) {
+    move_selection(state, None, false);
+    mutate(state, "Unstaged all changes", |git, repo| {
+        repo::unstage_all(git, repo)
+    });
 }
 
 /// Add the repository containing `folder`, select it and refresh it. A

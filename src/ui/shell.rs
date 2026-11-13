@@ -1,6 +1,7 @@
 //! The window layout: sidebar, toolbar, tabs and status bar.
 
 use crate::actions;
+use crate::ui::changes::changes_panel;
 use crate::ui::sidebar::sidebar;
 use crate::ui::style::{colors, Slot, SlotProps};
 use crate::ui::widgets::action_button;
@@ -17,12 +18,21 @@ use std::rc::Rc;
 pub fn root(state: State) -> ViewNode {
     // Geist and Geist Mono; without them text falls back to system fonts.
     register_fonts(&current_document()).expect("the bundled fonts load");
+    // A new selection loads its status. The work runs in a task so the
+    // effect depends on the selection alone.
+    create_effect(move || {
+        let selected = state.selected.get();
+        div::task::spawn_local(async move { actions::selection_changed(state, selected) }).detach();
+    });
     let c = colors();
+    // div-gap: 26. Layout time grows about 2.2 times with each nested flex
+    // container, so the frame is absolutely positioned blocks: sidebar,
+    // main area and status bar here, then the tabs and the Changes panes.
+    // Flex is used only inside rows.
     view! {
         <div
             id="app"
-            style:display="flex"
-            style:flex-direction="column"
+            style:position="relative"
             style:height="100vh"
             style:font-family="Geist"
             style:font-size="14px"
@@ -30,10 +40,8 @@ pub fn root(state: State) -> ViewNode {
             style:color={c.foreground}
             style:background-color={c.background}
         >
-            <div style:display="flex" style:flex-grow="1" style:min-height="0">
-                <Slot view={sidebar(state)} />
-                <Slot view={main_area(state)} />
-            </div>
+            <Slot view={sidebar(state)} />
+            <Slot view={main_area(state)} />
             <Slot view={status_bar(state)} />
         </div>
     }
@@ -52,6 +60,7 @@ fn toolbar(state: State) -> ViewNode {
     view! {
         <div
             id="toolbar"
+            style:box-sizing="border-box"
             style:display="flex"
             style:align-items="center"
             style:gap="12px"
@@ -89,7 +98,6 @@ fn toolbar(state: State) -> ViewNode {
 }
 
 fn main_area(state: State) -> ViewNode {
-    let c = colors();
     // Controlled, as in Radix: the tabs report a selection and the app
     // writes it, so the View menu and the tabs share `state.tab`.
     let tabs = TabsState::new(TabsOptions {
@@ -105,38 +113,81 @@ fn main_area(state: State) -> ViewNode {
         }
     });
     let [p0, p1, p2] = Tab::ALL.map(|tab| {
-        view! {
+        let body = match tab {
+            Tab::Changes => Show(
+                move || state.selected.get().is_some(),
+                move || placeholder(state, tab),
+                move || changes_panel(state),
+            ),
+            _ => placeholder(state, tab),
+        };
+        let content = view! {
             <TabsContent state={tabs.clone()} value={tab.value()}>
-                <div style:padding="24px 0" style:color={c.muted_foreground}>
-                    {match state.selected_repo() {
-                        Some(repo) => format!("{}: {}", tab.label(), repo.path.display()),
-                        None => "Select a repository in the list.".to_owned(),
-                    }}
-                </div>
+                <Slot view={body} />
             </TabsContent>
+        };
+        // div-gap: 26. The panel fills the area below the tab list (12px
+        // padding, a 36px list, an 8px gap) so its lists scroll inside it.
+        if let ViewNode::Element(element) = &content {
+            element
+                .apply_style(
+                    &style! { position: absolute; top: 56px; right: 0; bottom: 0; left: 0 },
+                )
+                .expect("style a tab panel");
         }
+        content
     });
+    let tabs_view = view! {
+        <Tabs state={tabs.clone()}>
+            <TabsList state={tabs.clone()}>
+                <Slot view={t0} />
+                <Slot view={t1} />
+                <Slot view={t2} />
+            </TabsList>
+            <Slot view={p0} />
+            <Slot view={p1} />
+            <Slot view={p2} />
+        </Tabs>
+    };
+    // div-gap: 26. The tabs root is a flex column; make it a block that
+    // fills the area below the toolbar. (`TabsState::root` builds a new
+    // element, so this styles the one `Tabs` returned.)
+    if let ViewNode::Element(root) = &tabs_view {
+        root.apply_style(&style! {
+            display: block;
+            position: absolute;
+            top: 48px;
+            right: 16px;
+            bottom: 0;
+            left: 16px;
+            padding-top: 12px
+        })
+        .expect("style the tabs");
+    }
     view! {
         <div
             id="main"
-            style:display="flex"
-            style:flex-direction="column"
-            style:flex-grow="1"
-            style:min-width="0"
+            style:position="absolute"
+            style:top="0"
+            style:right="0"
+            style:bottom="24px"
+            style:left="240px"
         >
             <Slot view={toolbar(state)} />
-            <div style:padding="12px 16px 0 16px" style:flex-grow="1" style:min-height="0">
-                <Tabs state={tabs.clone()}>
-                    <TabsList state={tabs.clone()}>
-                        <Slot view={t0} />
-                        <Slot view={t1} />
-                        <Slot view={t2} />
-                    </TabsList>
-                    <Slot view={p0} />
-                    <Slot view={p1} />
-                    <Slot view={p2} />
-                </Tabs>
-            </div>
+            <Slot view={tabs_view} />
+        </div>
+    }
+}
+
+/// What a tab shows until it has content for the selected repository.
+fn placeholder(state: State, tab: Tab) -> ViewNode {
+    let c = colors();
+    view! {
+        <div style:padding="24px 0" style:color={c.muted_foreground}>
+            {match state.selected_repo() {
+                Some(repo) => format!("{}: {}", tab.label(), repo.path.display()),
+                None => "Select a repository in the list.".to_owned(),
+            }}
         </div>
     }
 }
@@ -146,6 +197,11 @@ fn status_bar(state: State) -> ViewNode {
     view! {
         <div
             id="status-bar"
+            style:position="absolute"
+            style:right="0"
+            style:bottom="0"
+            style:left="0"
+            style:box-sizing="border-box"
             style:display="flex"
             style:align-items="center"
             style:height="24px"

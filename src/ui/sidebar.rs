@@ -44,11 +44,12 @@ pub fn sidebar(state: State) -> ViewNode {
     view! {
         <div
             id="sidebar"
-            style:display="flex"
-            style:flex-direction="column"
+            style:position="absolute"
+            style:top="0"
+            style:bottom="24px"
+            style:left="0"
             style:box-sizing="border-box"
             style:width="240px"
-            style:flex-shrink="0"
             style:background-color={c.sidebar}
             style:border-right-width="1"
             style:border-right-style="solid"
@@ -66,7 +67,15 @@ pub fn sidebar(state: State) -> ViewNode {
                 <Slot view={add} />
                 <Slot view={scan} />
             </div>
-            <div id="repo-list" style:flex-grow="1" style:min-height="0" style:overflow-y="auto">
+            <div
+                id="repo-list"
+                style:position="absolute"
+                style:top="81px"
+                style:right="0"
+                style:bottom="0"
+                style:left="0"
+                style:overflow-y="auto"
+            >
                 <Slot view={rows} />
                 <Slot view={empty} />
             </div>
