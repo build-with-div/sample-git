@@ -6,7 +6,7 @@
 
 use crate::actions;
 use crate::state::State;
-use crate::ui::style::{colors, Slot, SlotProps};
+use crate::ui::style::colors;
 use crate::ui::widgets::action_button;
 use div::prelude::*;
 use div_components::{ButtonSize, ButtonVariant};
@@ -105,8 +105,8 @@ fn dialog(state: State, document: Document) -> ViewNode {
                     {confirm.body.clone()}
                 </div>
                 <div style:display="flex" style:justify-content="flex-end" style:gap="8px" style:margin-top="24px">
-                    <Slot view={cancel} />
-                    <Slot view={accept} />
+                    {cancel}
+                    {accept}
                 </div>
             </div>
         </div>

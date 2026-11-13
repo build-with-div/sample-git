@@ -1,18 +1,7 @@
-//! Shared view helpers and colors.
+//! Shared colors.
 
 use div::prelude::*;
 use div_components::current_theme;
-
-/// Embeds a [`ViewNode`] (a `For`, `Show` or `DynChild`) as a child in
-/// `view!` markup.
-///
-/// div-gap: 6. A `{expr}` child is always converted to text, so
-/// `{For(..)}` cannot be written as a child directly.
-#[allow(non_snake_case)]
-#[component]
-pub fn Slot(view: ViewNode) -> ViewNode {
-    view
-}
 
 /// The theme's colors as typed values, for dynamic `style:` attributes.
 ///

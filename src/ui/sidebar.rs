@@ -2,7 +2,7 @@
 
 use crate::actions;
 use crate::state::{Repo, State};
-use crate::ui::style::{colors, Slot, SlotProps};
+use crate::ui::style::colors;
 use crate::ui::widgets::action_button;
 use div::prelude::*;
 use div_components::{ButtonSize, ButtonVariant};
@@ -64,8 +64,8 @@ pub fn sidebar(state: State) -> ViewNode {
                 "REPOSITORIES"
             </div>
             <div style:display="flex" style:gap="8px" style:padding="0 12px 12px 12px">
-                <Slot view={add} />
-                <Slot view={scan} />
+                {add}
+                {scan}
             </div>
             <div
                 id="repo-list"
@@ -76,8 +76,8 @@ pub fn sidebar(state: State) -> ViewNode {
                 style:left="0"
                 style:overflow-y="auto"
             >
-                <Slot view={rows} />
-                <Slot view={empty} />
+                {rows}
+                {empty}
             </div>
         </div>
     }
@@ -149,7 +149,7 @@ fn row(state: State, repo: Repo) -> ViewNode {
                     {state.summary(&summary_path).line()}
                 </div>
             </div>
-            <Slot view={remove} />
+            {remove}
         </div>
     }
 }

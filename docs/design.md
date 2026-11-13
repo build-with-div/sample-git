@@ -185,7 +185,7 @@ What each piece is built from in Div today.
 | UI piece | Built from |
 | --- | --- |
 | Layout (columns, toolbar, status bar) | `view!` with inline `style:` flex properties |
-| Repository, file, commit and branch rows | `For` keyed by path, hash or ref name, inside a small `Slot` component (see gaps) |
+| Repository, file, commit and branch rows | `For` keyed by path, hash or ref name, written as a `{For(…)}` child |
 | Selected and hovered rows | Dynamic `style:background-color={…}` (a typed `Color`) from selection and hover signals |
 | Buttons | `div_components::button::Button` (default, outline, ghost, destructive), wrapped for clicks (see gaps) |
 | Status letters, counts, ahead/behind | `div_components::badge::Badge` |

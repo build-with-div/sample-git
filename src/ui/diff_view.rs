@@ -7,7 +7,7 @@
 
 use crate::git::diff::{FileDiff, LineKind};
 use crate::state::DiffState;
-use crate::ui::style::{colors, Slot, SlotProps};
+use crate::ui::style::colors;
 use crate::ui::widgets::action_button;
 use div::prelude::*;
 use div_components::{ButtonSize, ButtonVariant};
@@ -96,7 +96,7 @@ pub fn diff_view(pane: DiffPane) -> ViewNode {
                     style:color={c.muted_foreground}
                 >
                     {format!("Showing {LINE_LIMIT} of {total} lines.")}
-                    <Slot view={show_all} />
+                    {show_all}
                 </div>
             }
         },
@@ -113,8 +113,8 @@ pub fn diff_view(pane: DiffPane) -> ViewNode {
             >
                 {header()}
             </div>
-            <Slot view={truncated} />
-            <Slot view={ViewNode::Element(lines)} />
+            {truncated}
+            {ViewNode::Element(lines)}
         </div>
     }
 }

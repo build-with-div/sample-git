@@ -5,7 +5,7 @@ use crate::ui::changes::changes_panel;
 use crate::ui::confirm::confirm_dialog;
 use crate::ui::history::history_panel;
 use crate::ui::sidebar::sidebar;
-use crate::ui::style::{colors, Slot, SlotProps};
+use crate::ui::style::colors;
 use crate::ui::widgets::action_button;
 use crate::{State, Tab};
 use div::prelude::*;
@@ -42,10 +42,10 @@ pub fn root(state: State) -> ViewNode {
             style:color={c.foreground}
             style:background-color={c.background}
         >
-            <Slot view={sidebar(state)} />
-            <Slot view={main_area(state)} />
-            <Slot view={status_bar(state)} />
-            <Slot view={confirm_dialog(state)} />
+            {sidebar(state)}
+            {main_area(state)}
+            {status_bar(state)}
+            {confirm_dialog(state)}
         </div>
     }
 }
@@ -95,7 +95,7 @@ fn toolbar(state: State) -> ViewNode {
                     .map(|path| state.summary(&path).line())
                     .unwrap_or_default()}
             </div>
-            <Slot view={refresh} />
+            {refresh}
         </div>
     }
 }
@@ -131,7 +131,7 @@ fn main_area(state: State) -> ViewNode {
         };
         let content = view! {
             <TabsContent state={tabs.clone()} value={tab.value()}>
-                <Slot view={body} />
+                {body}
             </TabsContent>
         };
         // div-gap: 26. The panel fills the area below the tab list (12px
@@ -148,13 +148,13 @@ fn main_area(state: State) -> ViewNode {
     let tabs_view = view! {
         <Tabs state={tabs.clone()}>
             <TabsList state={tabs.clone()}>
-                <Slot view={t0} />
-                <Slot view={t1} />
-                <Slot view={t2} />
+                {t0}
+                {t1}
+                {t2}
             </TabsList>
-            <Slot view={p0} />
-            <Slot view={p1} />
-            <Slot view={p2} />
+            {p0}
+            {p1}
+            {p2}
         </Tabs>
     };
     // div-gap: 26. The tabs root is a flex column; make it a block that
@@ -181,8 +181,8 @@ fn main_area(state: State) -> ViewNode {
             style:bottom="24px"
             style:left="240px"
         >
-            <Slot view={toolbar(state)} />
-            <Slot view={tabs_view} />
+            {toolbar(state)}
+            {tabs_view}
         </div>
     }
 }
