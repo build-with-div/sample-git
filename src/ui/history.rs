@@ -305,7 +305,7 @@ fn commit_file_row(state: State, file: ChangedFile) -> ViewNode {
     }
 }
 
-fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|elapsed| elapsed.as_secs() as i64)

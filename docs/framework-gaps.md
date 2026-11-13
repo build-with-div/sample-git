@@ -340,6 +340,10 @@ starts at the textarea's border edge; the 8px padding moves nothing,
 although `computed_style().padding_left` is 8px. The placeholder is drawn
 in the text color; Chromium draws it grey.
 Typing, `on:input`, `control_value` and `set_control_value` work.
+A text `<input>` is not affected: the Branches tab's name box, styled the
+same way, insets its text by its padding and draws its placeholder in
+`#757575` (darkest placeholder pixel in the release window on Windows),
+Chromium's color, so it needs no workaround.
 
 Area: engine, form controls (textarea text box and `::placeholder`).
 

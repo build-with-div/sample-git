@@ -6,8 +6,10 @@ and part of its job is to find what Div is still missing.
 
 Status: early. You can keep a list of repositories, see each one's status,
 stage or unstage files while reading their diffs, discard changes (after a
-confirmation), commit, and browse history: each commit's message, metadata,
-changed files and their diffs. Branches and remotes land in small steps. See
+confirmation), commit, browse history (each commit's message, metadata,
+changed files and their diffs), and work with branches: switch, create one
+at HEAD, delete a merged one (after a confirmation), and check out a remote
+branch as a tracking branch. Fetch, pull and push come next. See
 [docs/design.md](docs/design.md) for the plan and
 [docs/framework-gaps.md](docs/framework-gaps.md) for the Div gaps found so far.
 
@@ -16,6 +18,8 @@ changed files and their diffs. Branches and remotes land in small steps. See
 ![Discarding a file's changes asks first](docs/screenshots/discard-confirm.png)
 
 ![The History tab: a commit's message, metadata, changed files and one file's diff](docs/screenshots/history.png)
+
+![The Branches tab: a new branch name, local branches with their upstreams, and remote branches](docs/screenshots/branches.png)
 
 ## Build and run
 

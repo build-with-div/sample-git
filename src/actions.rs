@@ -3,8 +3,10 @@
 //! them into the state's signals.
 
 use crate::git::diff::{self, Source};
-use crate::git::{log, repo, status, Error, Git};
-use crate::state::{Confirm, DiffState, FileSelection, History, Loadable, Repo, State, Summary};
+use crate::git::{branch, log, repo, status, Error, Git};
+use crate::state::{
+    Branches, Confirm, DiffState, FileSelection, History, Loadable, Repo, State, Summary,
+};
 use crate::store;
 use div::task::{spawn_blocking, spawn_local};
 use std::path::{Path, PathBuf};
@@ -139,6 +141,9 @@ fn apply_status(state: State, path: PathBuf, result: Result<status::Status, Erro
             if stale {
                 load_history(state, path.clone(), false);
             }
+            // Branches are cheap to list, and a refresh may follow work
+            // outside the app, so every status reloads them.
+            load_branches(state, path.clone());
             // The selected file, if it is still in the list it was in.
             let file = state.file.get().and_then(|file| {
                 let entry = status
@@ -181,6 +186,7 @@ pub fn selection_changed(state: State, selected: Option<PathBuf>) {
     state.detail.set(None);
     state.history.set(History::default());
     clear_commit(state);
+    state.branches.set(Branches::default());
     if let Some(path) = selected {
         refresh(state, path);
     }
@@ -329,6 +335,100 @@ pub fn select_commit_file(state: State, path: String) {
         });
     })
     .detach();
+}
+
+/// List `path`'s branches. The old list stays up while the same
+/// repository reloads, so a refresh does not flicker.
+fn load_branches(state: State, path: PathBuf) {
+    if state.branches.get().repo.as_deref() != Some(path.as_path()) {
+        state.branches.set(Branches {
+            repo: Some(path.clone()),
+            loading: true,
+            ..Branches::default()
+        });
+    }
+    let git = state.git.get();
+    spawn_local(async move {
+        let probe = path.clone();
+        let result = spawn_blocking(move || branch::branches(&git, &probe)).await;
+        let mut branches = state.branches.get();
+        // Another repository was selected meanwhile.
+        if branches.repo.as_deref() != Some(path.as_path()) {
+            return;
+        }
+        branches.loading = false;
+        match result {
+            Ok(list) => {
+                branches.list = list;
+                branches.error = None;
+            }
+            Err(error) => branches.error = Some(error.summary()),
+        }
+        if state.branches.get() != branches {
+            state.branches.set(branches);
+        }
+    })
+    .detach();
+}
+
+/// Switch the selected repository to the local branch `name`. git refuses
+/// when local changes would be overwritten, and says why in the status bar.
+pub fn switch_branch(state: State, name: String) {
+    mutate(state, format!("Switched to {name}"), move |git, repo| {
+        branch::switch(git, repo, &name)
+    });
+}
+
+/// Create the branch typed into "New branch" at HEAD, switch to it and
+/// clear the box.
+pub fn create_branch(state: State) {
+    if !state.can_create_branch() {
+        return;
+    }
+    let name = state.new_branch.get().trim().to_owned();
+    mutate_then(
+        state,
+        format!("Created and switched to {name}"),
+        {
+            let name = name.clone();
+            move |git, repo| {
+                if !branch::is_valid_name(git, &name) {
+                    return Err(Error::Io(format!("\"{name}\" is not a valid branch name")));
+                }
+                branch::create(git, repo, &name)
+            }
+        },
+        move || state.new_branch.set(String::new()),
+    );
+}
+
+/// Create a local branch tracking the remote branch `name` (such as
+/// `origin/feature`) and switch to it.
+pub fn check_out_remote(state: State, name: String) {
+    let local = name.split_once('/').map_or(name.as_str(), |(_, rest)| rest);
+    let done = format!("Created {local} tracking {name}");
+    mutate(state, done, move |git, repo| {
+        branch::track(git, repo, &name)
+    });
+}
+
+/// Ask, then delete the local branch `name` if it is merged.
+pub fn ask_delete_branch(state: State, name: String) {
+    state.confirm.set(Some(Confirm {
+        title: format!("Delete branch {name}?"),
+        body: "git deletes the branch only if it is merged into its upstream \
+               branch, or into the current branch when it has none. An \
+               unmerged branch is kept, and the status bar says why."
+            .to_owned(),
+        action: "Delete branch".to_owned(),
+        run: Rc::new(move || delete_branch(state, name.clone())),
+    }));
+}
+
+fn delete_branch(state: State, name: String) {
+    mutate(state, format!("Deleted branch {name}"), move |git, repo| {
+        branch::delete(git, repo, &name)
+    });
 }
 
 /// Run `operation` on the selected repository on the blocking pool, with
