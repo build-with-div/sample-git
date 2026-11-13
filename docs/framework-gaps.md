@@ -13,26 +13,47 @@ when Div fixes the gap: `git grep -n "div-gap: 6"`.
 Areas: **engine** (style, layout, paint, text), **framework** (divui,
 platform, macros, CLI), **components** (div-components).
 
+The workarounds are temporary scaffolding. The fix for each gap is the web
+platform feature that makes it unnecessary, made to match Chromium, so that
+code written as it would be for the browser (or ported from an npm package)
+works on Div unchanged. The "Removed by" column names that feature. Where
+no web feature applies (macros, packaging, desktop services), it names the
+JSX, Solid/Leptos or Electron/Tauri behavior the app expects instead.
+
 Pinned Div: `565db46a`.
 
-| # | Gap | Area | Severity | Status |
-| --- | --- | --- | --- | --- |
-| [1](#1-no-hover-styling) | No `:hover` styling | engine: style | workaround | open |
-| [3](#3-dynamic-style-values-need-typed-values) | Dynamic style values need typed values | framework: macros | workaround | open |
-| [4](#4-common-style-literals-are-rejected) | Common style literals are rejected | engine: style; framework: macros | workaround | open |
-| [5](#5-onclick-on-a-component-is-silently-dropped) | `on:click` on a component is silently dropped | framework: macros; components | — | fixed in `565db46a` |
-| [6](#6-for-and-show-cannot-be-children-in-view) | `For`/`Show` cannot be children in `view!` | framework: macros | workaround | open |
-| [7](#7-optional-component-props-are-not-filled) | Optional component props are not filled | framework: macros | workaround | open |
-| [8](#8-no-virtualized-list) | No virtualized list | framework; components | workaround: long diffs are cut | open |
-| [10](#10-keys-are-matched-by-code) | Keys are matched by code | framework: events | workaround | open |
-| [14](#14-no-dialog-or-top-layer) | No dialog or top layer | framework: dialog; engine: top layer | workaround | open |
-| [20](#20-no-app-data-directory) | No app data directory | framework: platform | workaround | open |
-| [21](#21-no-window-activation-event) | No window activation event | framework: platform | workaround | open |
-| [23](#23-dynamic-attributes-are-set-once-and-disabledfalse-disables) | Dynamic attributes are set once, and `disabled={false}` disables | framework: macros | workaround | open |
-| [24](#24-a-fresh-lockfile-does-not-build-on-linux) | A fresh lockfile does not build on Linux | framework: packaging | blocks Linux builds | open |
-| [25](#25-current_document-panics-when-an-effect-re-runs) | `current_document()` panics when an effect re-runs | framework: reactive | workaround | open |
-| [26](#26-layout-time-grows-exponentially-with-nested-flex-containers) | Layout time grows exponentially with nested flex containers | engine: layout | blocked the diff view; workaround | open |
-| [27](#27-a-textarea-ignores-its-padding-and-greys-no-placeholder) | A textarea ignores its padding and greys no placeholder | engine: forms | workaround | open |
+| # | Gap | Removed by | Area | Severity | Status |
+| --- | --- | --- | --- | --- | --- |
+| [1](#1-no-hover-styling) | No `:hover` styling | CSS `:hover` (with `:focus-visible`, `:active`) and hover-state style invalidation | engine: style | workaround | open |
+| [3](#3-dynamic-style-values-need-typed-values) | Dynamic style values need typed values | CSS text for dynamic values, as `element.style.setProperty(name, value)` parses it | framework: macros | workaround | open |
+| [4](#4-common-style-literals-are-rejected) | Common style literals are rejected | Chromium's CSS parsing: shorthands (`inset`, `flex`, `border`, `border-width`/`-style`/`-color`), `<length>` border widths (`1px`), `resize`, `cursor: col-resize` | engine: style; framework: macros | workaround | open |
+| [5](#5-onclick-on-a-component-is-silently-dropped) | `on:click` on a component is silently dropped | JSX-style event props on components (fixed by forwarding) | framework: macros; components | — | fixed in `565db46a` |
+| [6](#6-for-and-show-cannot-be-children-in-view) | `For`/`Show` cannot be children in `view!` | JSX expression children: a view (element, array, `.map()` result) as a `{expr}` child, as in React and Leptos | framework: macros | workaround | open |
+| [7](#7-optional-component-props-are-not-filled) | Optional component props are not filled | JSX props with defaults: omitted optional props take their default | framework: macros | workaround | open |
+| [8](#8-no-virtualized-list) | No virtualized list | CSS `content-visibility: auto` with `contain-intrinsic-size`, and layout fast enough for react-window-style windowing (absolute rows driven by `scroll` events) | framework; components | workaround: long diffs are cut | open |
+| [10](#10-keys-are-matched-by-code) | Keys are matched by code | `KeyboardEvent.key` and `ctrlKey`/`metaKey` (UI Events); key names landed in Div #27, workaround not removed yet | framework: events | workaround | open |
+| [14](#14-no-dialog-or-top-layer) | No dialog or top layer | `<dialog>` with `showModal()`: top layer, `::backdrop`, inert background, Escape `cancel` event, focus moved into the dialog | framework: dialog; engine: top layer | workaround | open |
+| [20](#20-no-app-data-directory) | No app data directory | Electron `app.getPath("userData")` / Tauri `appDataDir()`, and `shell.showItemInFolder` (no web feature) | framework: platform | workaround | open |
+| [21](#21-no-window-activation-event) | No window activation event | `window` `focus`/`blur` events and `visibilitychange` (Page Visibility) | framework: platform | workaround | open |
+| [23](#23-dynamic-attributes-are-set-once-and-disabledfalse-disables) | Dynamic attributes are set once, and `disabled={false}` disables | HTML boolean attributes with reactive binding: `disabled={false}` removes the attribute, as in React; attribute values update like `setAttribute`/`removeAttribute` | framework: macros | workaround | open |
+| [24](#24-a-fresh-lockfile-does-not-build-on-linux) | A fresh lockfile does not build on Linux | None (Rust packaging): Div pins the zbus macro crates it needs | framework: packaging | blocks Linux builds | open |
+| [25](#25-current_document-panics-when-an-effect-re-runs) | `current_document()` panics when an effect re-runs | Effects that run in the owner and context they were created in (Solid/Leptos owners); on the web `document` is always available | framework: reactive | workaround | open |
+| [26](#26-layout-time-grows-exponentially-with-nested-flex-containers) | Layout time grows exponentially with nested flex containers | Chromium LayoutNG flex: cached layout results, so nested flexbox lays out in linear time | engine: layout | blocked the diff view; workaround | open |
+| [27](#27-a-textarea-ignores-its-padding-and-greys-no-placeholder) | A textarea ignores its padding and greys no placeholder | `<textarea>` box model (padding inside the text box) and the `::placeholder` pseudo-element with Chromium's grey UA color | engine: forms | workaround | open |
+| [28](#28-dynchild-wraps-its-content-in-a-span) | `DynChild` wraps its content in a `<span>` | Dynamic children that add no element, as JSX `{cond ? a : b}` in React, Solid and Leptos (markers or comment nodes, not a box) | framework: reactive | workaround | open |
+
+Gaps the design's probe found that the app has not met in code yet, because
+v1 left the feature out:
+
+| # | Gap | Removed by | Area |
+| --- | --- | --- | --- |
+| 2 | Shared styles | CSS class selectors and stylesheets (`<style>`, the cascade) | engine: style |
+| 15 | Context menus | The `contextmenu` event, plus a popup menu like Electron `Menu.popup` | framework: events, platform |
+| 16 | Resizable split panes | Pointer Events (`pointerdown`/`pointermove`) with `setPointerCapture`, and `cursor: col-resize` | framework: events; engine: style |
+| 17 | Icons | Inline SVG (`<svg>`, `<path>`, `stroke`), as lucide-react renders | engine: paint |
+| 18 | `<select>` | HTML `<select>`: the first option selected by default, a popup list | engine: forms |
+| 19 | Dark mode | The `prefers-color-scheme` media query and CSS custom properties (`var()`) | engine: style |
+| 22 | Tooltips | The `title` attribute, or the Popover API with anchor positioning (as Radix Tooltip uses) | framework; engine |
 
 ## 1. No hover styling
 
@@ -327,3 +348,20 @@ borderless textarea that fills it, and "Commit message" is a muted label
 over the textarea, shown while the message is empty, with
 `pointer-events: none`. A click on the box's padding focuses the textarea.
 Marked `div-gap: 27`.
+
+## 28. `DynChild` wraps its content in a `<span>`
+
+Tried: the History tab's commit pane switches between a note and the
+commit's details with `DynChild(move || match state.details.get() { ... })`,
+inside an absolutely positioned, scrolling `#commit-pane`.
+
+Happened: `DynChild` returns a `<span>` that holds the current view. The
+span is an inline box, so block children (the details, the diff) are
+laid out inside an inline formatting context. In React, Solid and Leptos
+a dynamic child adds no element of its own. (`Show` uses a container with
+`display: contents`; `DynChild` does not.)
+
+Area: framework, reactive views (`DynChild`).
+
+Workaround (`ui/history.rs`): the span returned by `DynChild` gets
+`display: contents`, so its children lay out as children of the pane.

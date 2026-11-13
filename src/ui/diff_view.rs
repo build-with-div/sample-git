@@ -6,11 +6,12 @@
 //! a thousand static lines does not need.
 
 use crate::git::diff::{FileDiff, LineKind};
-use crate::state::{DiffState, State};
+use crate::state::DiffState;
 use crate::ui::style::{colors, Slot, SlotProps};
 use crate::ui::widgets::action_button;
 use div::prelude::*;
 use div_components::{ButtonSize, ButtonVariant};
+use std::rc::Rc;
 
 /// Lines shown before "Show full diff".
 ///
@@ -18,11 +19,32 @@ use div_components::{ButtonSize, ButtonVariant};
 /// out headless, so a long diff is cut here.
 pub const LINE_LIMIT: usize = 500;
 
-pub fn diff_view(state: State) -> ViewNode {
+/// What a diff view shows, and the prefix of its element ids
+/// (`{id}-header`, `{id}-lines`, `{id}-truncated`, `show-full-{id}`).
+pub struct DiffPane {
+    pub id: &'static str,
+    pub diff: Signal<DiffState>,
+    /// Show every line rather than the first [`LINE_LIMIT`].
+    pub full: Signal<bool>,
+    pub header: Rc<dyn Fn() -> String>,
+    /// Shown while there is no diff.
+    pub empty: &'static str,
+}
+
+pub fn diff_view(pane: DiffPane) -> ViewNode {
     let c = colors();
+    let DiffPane {
+        id,
+        diff,
+        full,
+        header,
+        empty,
+    } = pane;
     let document = current_document();
     let lines = Element::create(&document, "div").expect("create the diff body");
-    lines.set_attribute("id", "diff-lines").expect("set id");
+    lines
+        .set_attribute("id", &format!("{id}-lines"))
+        .expect("set id");
     lines
         .apply_style(&style! {
             font-family: "Geist Mono";
@@ -35,44 +57,38 @@ pub fn diff_view(state: State) -> ViewNode {
     // div-gap: 25. An effect re-runs outside the document context, where
     // `current_document()` panics, so the document is captured here.
     create_effect(move || {
-        let diff = state.diff.get();
-        let full = state.full_diff.get();
+        let shown = diff.get();
+        let full = full.get();
         let _ = body.remove_all_children();
-        match diff {
-            DiffState::Empty => message(&document, &body, "Select a file to see its changes."),
+        match shown {
+            DiffState::Empty => message(&document, &body, empty),
             DiffState::Loading => message(&document, &body, "Loading…"),
             DiffState::Failed(error) => message(&document, &body, &error),
-            DiffState::Ready(diff) => render(&document, &body, &diff, full),
+            DiffState::Ready(shown) => render(&document, &body, &shown, full),
         }
     });
-    let header = move || match state.file.get() {
-        Some(file) if file.staged => format!("{} (staged)", file.path),
-        Some(file) if file.untracked => format!("{} (new file)", file.path),
-        Some(file) => file.path,
-        None => String::new(),
-    };
     let truncated = Show(
         move || {
-            !state.full_diff.get()
-                && matches!(state.diff.get(), DiffState::Ready(diff) if diff.line_count() > LINE_LIMIT)
+            !full.get()
+                && matches!(diff.get(), DiffState::Ready(shown) if shown.line_count() > LINE_LIMIT)
         },
         || ViewNode::Empty,
         move || {
-            let total = match state.diff.get() {
-                DiffState::Ready(diff) => diff.line_count(),
+            let total = match diff.get() {
+                DiffState::Ready(shown) => shown.line_count(),
                 _ => 0,
             };
             let show_all = action_button(
                 "Show full diff",
                 ButtonVariant::Outline,
                 ButtonSize::Xs,
-                Some("show-full-diff".into()),
+                Some(format!("show-full-{id}")),
                 || true,
-                move || state.full_diff.set(true),
+                move || full.set(true),
             );
             view! {
                 <div
-                    id="diff-truncated"
+                    id={format!("{id}-truncated")}
                     style:display="flex"
                     style:align-items="center"
                     style:gap="8px"
@@ -86,9 +102,9 @@ pub fn diff_view(state: State) -> ViewNode {
         },
     );
     view! {
-        <div id="diff">
+        <div id={id}>
             <div
-                id="diff-header"
+                id={format!("{id}-header")}
                 style:padding="6px 12px"
                 style:font-weight="600"
                 style:white-space="nowrap"
