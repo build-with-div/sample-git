@@ -6,13 +6,16 @@ and part of its job is to find what Div is still missing.
 
 Status: early. You can keep a list of repositories, see each one's status,
 stage or unstage files while reading their diffs, discard changes (after a
-confirmation) and commit. History, branches and remotes land in small steps. See [docs/design.md](docs/design.md)
-for the plan and [docs/framework-gaps.md](docs/framework-gaps.md) for the Div
-gaps found so far.
+confirmation), commit, and browse history: each commit's message, metadata,
+changed files and their diffs. Branches and remotes land in small steps. See
+[docs/design.md](docs/design.md) for the plan and
+[docs/framework-gaps.md](docs/framework-gaps.md) for the Div gaps found so far.
 
 ![The Changes tab on Windows, with three fixture repositories and a commit message](docs/screenshots/commit-box.png)
 
 ![Discarding a file's changes asks first](docs/screenshots/discard-confirm.png)
+
+![The History tab: a commit's message, metadata, changed files and one file's diff](docs/screenshots/history.png)
 
 ## Build and run
 

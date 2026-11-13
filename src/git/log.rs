@@ -25,6 +25,8 @@ pub struct CommitDetails {
     pub commit: Commit,
     pub committer: String,
     pub commit_time: i64,
+    /// The author date in local time, `2026-11-13 14:05`.
+    pub date: String,
     pub message: String,
     pub files: Vec<ChangedFile>,
 }
@@ -90,16 +92,24 @@ fn parse_commit(record: &str) -> Result<Commit, Error> {
 /// Details of `hash`: message, committer and changed files (against the
 /// first parent; a root commit against the empty tree).
 pub fn details(git: &Git, repo: &Path, hash: &str) -> Result<CommitDetails, Error> {
-    let format = "--format=%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%cn%x1f%ct%x1f%B";
+    let format = "--format=%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%cn%x1f%ct%x1f%ad%x1f%B";
     let output = git.run(
         repo,
-        &git_args!("show", "-s", "--no-color", format, hash, "--"),
+        &git_args!(
+            "show",
+            "-s",
+            "--no-color",
+            "--date=format-local:%Y-%m-%d %H:%M",
+            format,
+            hash,
+            "--"
+        ),
         Access::Read,
     )?;
     let text = String::from_utf8_lossy(&output);
-    let fields: Vec<&str> = text.splitn(10, UNIT).collect();
+    let fields: Vec<&str> = text.splitn(11, UNIT).collect();
     let bad = || Error::Io(format!("unexpected commit record: {text:?}"));
-    if fields.len() != 10 {
+    if fields.len() != 11 {
         return Err(bad());
     }
     let commit = parse_commit(&fields[..7].join(&UNIT.to_string()))?;
@@ -124,7 +134,8 @@ pub fn details(git: &Git, repo: &Path, hash: &str) -> Result<CommitDetails, Erro
         commit,
         committer: fields[7].to_owned(),
         commit_time: fields[8].parse().map_err(|_| bad())?,
-        message: fields[9].trim_end().to_owned(),
+        date: fields[9].to_owned(),
+        message: fields[10].trim_end().to_owned(),
         files: parse_name_status(&String::from_utf8_lossy(&files))?,
     })
 }

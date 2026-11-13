@@ -2,6 +2,7 @@
 //! so the struct is `Copy`.
 
 use crate::git::diff::FileDiff;
+use crate::git::log::{Commit, CommitDetails};
 use crate::git::status::Status;
 use crate::git::Git;
 use div::prelude::*;
@@ -122,6 +123,29 @@ pub enum DiffState {
     Failed(String),
 }
 
+/// Something loaded in the background.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Loadable<T> {
+    #[default]
+    Empty,
+    Loading,
+    Ready(T),
+    Failed(String),
+}
+
+/// The History tab's list: the selected repository's commits from HEAD,
+/// loaded a page at a time.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct History {
+    /// The repository the commits belong to.
+    pub repo: Option<PathBuf>,
+    pub commits: Vec<Commit>,
+    /// The last page was full, so there may be more.
+    pub more: bool,
+    pub loading: bool,
+    pub error: Option<String>,
+}
+
 /// A question the confirmation dialog asks before an action that can lose
 /// work.
 #[derive(Clone)]
@@ -158,6 +182,14 @@ pub struct State {
     pub message: Signal<String>,
     /// The open confirmation dialog, if any.
     pub confirm: Signal<Option<Confirm>>,
+    pub history: Signal<History>,
+    /// The hash of the commit selected in History.
+    pub commit: Signal<Option<String>>,
+    pub details: Signal<Loadable<CommitDetails>>,
+    /// The file of the selected commit whose diff is shown.
+    pub commit_file: Signal<Option<String>>,
+    pub commit_diff: Signal<DiffState>,
+    pub commit_full_diff: Signal<bool>,
 }
 
 impl State {
@@ -182,6 +214,12 @@ impl State {
             busy: create_signal(false),
             message: create_signal(String::new()),
             confirm: create_signal(None),
+            history: create_signal(History::default()),
+            commit: create_signal(None),
+            details: create_signal(Loadable::Empty),
+            commit_file: create_signal(None),
+            commit_diff: create_signal(DiffState::Empty),
+            commit_full_diff: create_signal(false),
         }
     }
 

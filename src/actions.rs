@@ -3,8 +3,8 @@
 //! them into the state's signals.
 
 use crate::git::diff::{self, Source};
-use crate::git::{repo, status, Error, Git};
-use crate::state::{Confirm, DiffState, FileSelection, Repo, State, Summary};
+use crate::git::{log, repo, status, Error, Git};
+use crate::state::{Confirm, DiffState, FileSelection, History, Loadable, Repo, State, Summary};
 use crate::store;
 use div::task::{spawn_blocking, spawn_local};
 use std::path::{Path, PathBuf};
@@ -13,6 +13,8 @@ use std::rc::Rc;
 /// How deep "Scan folder" looks, and how many repositories it adds at most.
 pub const SCAN_DEPTH: usize = 3;
 pub const SCAN_LIMIT: usize = 500;
+/// Commits per History page.
+pub const HISTORY_PAGE: usize = 200;
 /// Status refreshes that run at once.
 const PARALLEL_REFRESHES: usize = 4;
 
@@ -127,6 +129,16 @@ fn apply_status(state: State, path: PathBuf, result: Result<status::Status, Erro
     }
     match result {
         Ok(status) => {
+            // HEAD moved (a commit, a switch, a pull, or work outside the
+            // app): reload History from the top.
+            let history = state.history.get();
+            let head = status.branch.oid.as_deref();
+            let stale = history.repo.as_deref() != Some(path.as_path())
+                || (!history.loading
+                    && history.commits.first().map(|commit| commit.hash.as_str()) != head);
+            if stale {
+                load_history(state, path.clone(), false);
+            }
             // The selected file, if it is still in the list it was in.
             let file = state.file.get().and_then(|file| {
                 let entry = status
@@ -167,6 +179,8 @@ pub fn selection_changed(state: State, selected: Option<PathBuf>) {
     state.file.set(None);
     state.diff.set(DiffState::Empty);
     state.detail.set(None);
+    state.history.set(History::default());
+    clear_commit(state);
     if let Some(path) = selected {
         refresh(state, path);
     }
@@ -201,6 +215,115 @@ fn load_diff(state: State) {
             return;
         }
         state.diff.set(match result {
+            Ok(diff) => DiffState::Ready(diff),
+            Err(error) => DiffState::Failed(error.summary()),
+        });
+    })
+    .detach();
+}
+
+/// Load a page of `path`'s history: the first page, replacing the list, or
+/// the next one after it.
+fn load_history(state: State, path: PathBuf, append: bool) {
+    let mut history = state.history.get();
+    if append && (history.loading || !history.more) {
+        return;
+    }
+    if !append {
+        history = History {
+            repo: Some(path.clone()),
+            ..History::default()
+        };
+    }
+    history.loading = true;
+    let skip = history.commits.len();
+    state.history.set(history);
+    let git = state.git.get();
+    spawn_local(async move {
+        let probe = path.clone();
+        let page = spawn_blocking(move || log::log(&git, &probe, skip, HISTORY_PAGE)).await;
+        let mut history = state.history.get();
+        // Another repository was selected meanwhile.
+        if history.repo.as_deref() != Some(path.as_path()) {
+            return;
+        }
+        history.loading = false;
+        match page {
+            Ok(page) => {
+                history.more = page.len() == HISTORY_PAGE;
+                history.commits.extend(page);
+                history.error = None;
+            }
+            Err(error) => history.error = Some(error.summary()),
+        }
+        let selected = state.commit.get();
+        let kept = selected.is_none_or(|hash| history.commits.iter().any(|c| c.hash == hash));
+        state.history.set(history);
+        if !kept {
+            clear_commit(state);
+        }
+    })
+    .detach();
+}
+
+/// Load the next page of History.
+pub fn load_more(state: State) {
+    if let Some(path) = state.selected.get() {
+        load_history(state, path, true);
+    }
+}
+
+fn clear_commit(state: State) {
+    state.commit.set(None);
+    state.details.set(Loadable::Empty);
+    state.commit_file.set(None);
+    state.commit_diff.set(DiffState::Empty);
+}
+
+/// Show `hash`'s message, metadata and changed files.
+pub fn select_commit(state: State, hash: String) {
+    let Some(repo) = state.selected.get() else {
+        return;
+    };
+    if state.commit.get().as_ref() == Some(&hash) {
+        return;
+    }
+    clear_commit(state);
+    state.commit.set(Some(hash.clone()));
+    state.details.set(Loadable::Loading);
+    let git = state.git.get();
+    spawn_local(async move {
+        let wanted = hash.clone();
+        let result = spawn_blocking(move || log::details(&git, &repo, &wanted)).await;
+        if state.commit.get().as_ref() != Some(&hash) {
+            return;
+        }
+        state.details.set(match result {
+            Ok(details) => Loadable::Ready(details),
+            Err(error) => Loadable::Failed(error.summary()),
+        });
+    })
+    .detach();
+}
+
+/// Show the selected commit's diff of `path`.
+pub fn select_commit_file(state: State, path: String) {
+    let (Some(repo), Some(hash)) = (state.selected.get(), state.commit.get()) else {
+        return;
+    };
+    state.commit_full_diff.set(false);
+    state.commit_file.set(Some(path.clone()));
+    state.commit_diff.set(DiffState::Loading);
+    let git = state.git.get();
+    spawn_local(async move {
+        let (wanted, source) = (path.clone(), Source::Commit(hash.clone()));
+        let result = spawn_blocking(move || diff::diff_file(&git, &repo, &wanted, &source)).await;
+        if state.commit.get().as_ref() != Some(&hash)
+            || state.commit_file.get().as_ref() != Some(&path)
+        {
+            return;
+        }
+        state.commit_diff.set(match result {
             Ok(diff) => DiffState::Ready(diff),
             Err(error) => DiffState::Failed(error.summary()),
         });

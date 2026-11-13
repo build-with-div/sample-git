@@ -3,6 +3,7 @@
 use crate::actions;
 use crate::ui::changes::changes_panel;
 use crate::ui::confirm::confirm_dialog;
+use crate::ui::history::history_panel;
 use crate::ui::sidebar::sidebar;
 use crate::ui::style::{colors, Slot, SlotProps};
 use crate::ui::widgets::action_button;
@@ -120,6 +121,11 @@ fn main_area(state: State) -> ViewNode {
                 move || state.selected.get().is_some(),
                 move || placeholder(state, tab),
                 move || changes_panel(state),
+            ),
+            Tab::History => Show(
+                move || state.selected.get().is_some(),
+                move || placeholder(state, tab),
+                move || history_panel(state),
             ),
             _ => placeholder(state, tab),
         };

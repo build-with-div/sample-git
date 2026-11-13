@@ -79,6 +79,8 @@ fn status_stage_unstage_and_commit() {
     assert_eq!(commits[0].subject, "Change the readme");
     assert_eq!(commits[0].author, "Fixture Author");
     let details = log::details(git, &repo, &commits[0].hash).unwrap();
+    // `2026-11-13 14:05`, in local time.
+    assert_eq!(details.date.len(), 16, "{}", details.date);
     assert_eq!(details.message, "Change the readme\n\nAnd add a file.");
     let files: Vec<_> = details
         .files

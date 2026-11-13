@@ -3,11 +3,12 @@
 use crate::actions;
 use crate::git::status::{Change, Entry};
 use crate::state::{FileSelection, State};
-use crate::ui::diff_view::diff_view;
+use crate::ui::diff_view::{diff_view, DiffPane};
 use crate::ui::style::{colors, Slot, SlotProps};
 use crate::ui::widgets::action_button;
 use div::prelude::*;
 use div_components::{ButtonSize, ButtonVariant};
+use std::rc::Rc;
 
 /// div-gap: 10. Keys are matched by code; `Event::key()` is not public yet.
 const ENTER: i32 = 13;
@@ -44,10 +45,26 @@ pub fn changes_panel(state: State) -> ViewNode {
                 style:left="320px"
                 style:overflow="auto"
             >
-                <Slot view={diff_view(state)} />
+                <Slot view={changes_diff(state)} />
             </div>
         </div>
     }
+}
+
+/// The diff of the file selected in the lists.
+fn changes_diff(state: State) -> ViewNode {
+    diff_view(DiffPane {
+        id: "diff",
+        diff: state.diff,
+        full: state.full_diff,
+        header: Rc::new(move || match state.file.get() {
+            Some(file) if file.staged => format!("{} (staged)", file.path),
+            Some(file) if file.untracked => format!("{} (new file)", file.path),
+            Some(file) => file.path,
+            None => String::new(),
+        }),
+        empty: "Select a file to see its changes.",
+    })
 }
 
 /// The message box and Commit button under the lists.
@@ -259,7 +276,7 @@ fn letter(entry: &Entry, staged: bool) -> &'static str {
     change_of(entry, staged).letter()
 }
 
-fn letter_color(change: Change) -> Color {
+pub(crate) fn letter_color(change: Change) -> Color {
     match change {
         Change::Added | Change::Untracked => Color::from_rgba8(26, 127, 55, 255),
         Change::Deleted => Color::from_rgba8(207, 34, 46, 255),

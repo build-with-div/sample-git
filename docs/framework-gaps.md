@@ -40,6 +40,7 @@ Pinned Div: `565db46a`.
 | [25](#25-current_document-panics-when-an-effect-re-runs) | `current_document()` panics when an effect re-runs | Effects that run in the owner and context they were created in (Solid/Leptos owners); on the web `document` is always available | framework: reactive | workaround | open |
 | [26](#26-layout-time-grows-exponentially-with-nested-flex-containers) | Layout time grows exponentially with nested flex containers | Chromium LayoutNG flex: cached layout results, so nested flexbox lays out in linear time | engine: layout | blocked the diff view; workaround | open |
 | [27](#27-a-textarea-ignores-its-padding-and-greys-no-placeholder) | A textarea ignores its padding and greys no placeholder | `<textarea>` box model (padding inside the text box) and the `::placeholder` pseudo-element with Chromium's grey UA color | engine: forms | workaround | open |
+| [28](#28-dynchild-wraps-its-content-in-a-span) | `DynChild` wraps its content in a `<span>` | Dynamic children that add no element, as JSX `{cond ? a : b}` in React, Solid and Leptos (markers or comment nodes, not a box) | framework: reactive | workaround | open |
 
 Gaps the design's probe found that the app has not met in code yet, because
 v1 left the feature out:
@@ -347,3 +348,20 @@ borderless textarea that fills it, and "Commit message" is a muted label
 over the textarea, shown while the message is empty, with
 `pointer-events: none`. A click on the box's padding focuses the textarea.
 Marked `div-gap: 27`.
+
+## 28. `DynChild` wraps its content in a `<span>`
+
+Tried: the History tab's commit pane switches between a note and the
+commit's details with `DynChild(move || match state.details.get() { ... })`,
+inside an absolutely positioned, scrolling `#commit-pane`.
+
+Happened: `DynChild` returns a `<span>` that holds the current view. The
+span is an inline box, so block children (the details, the diff) are
+laid out inside an inline formatting context. In React, Solid and Leptos
+a dynamic child adds no element of its own. (`Show` uses a container with
+`display: contents`; `DynChild` does not.)
+
+Area: framework, reactive views (`DynChild`).
+
+Workaround (`ui/history.rs`): the span returned by `DynChild` gets
+`display: contents`, so its children lay out as children of the pane.
