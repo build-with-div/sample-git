@@ -1,4 +1,5 @@
-//! The confirmation dialog for actions that can lose work.
+//! The dialog: a question before an action that can lose or publish work,
+//! or a message such as git's full error output.
 //!
 //! div-gap: 14. Div has no dialog or top layer, so this is a scrim over the
 //! window with a card in the middle. `Document::set_modal_root` keeps input
@@ -37,26 +38,59 @@ fn dialog(state: State, document: Document) -> ViewNode {
     let Some(confirm) = state.confirm.get() else {
         return ViewNode::Empty;
     };
-    let cancel = action_button(
-        "Cancel",
-        ButtonVariant::Outline,
-        ButtonSize::Default,
-        Some("confirm-cancel".into()),
-        || true,
-        move || actions::cancel_confirm(state),
-    );
+    // A question has Cancel; a message has only its one button.
+    let cancel = confirm.run.as_ref().map(|_| {
+        action_button(
+            "Cancel",
+            ButtonVariant::Outline,
+            ButtonSize::Default,
+            Some("confirm-cancel".into()),
+            || true,
+            move || actions::cancel_confirm(state),
+        )
+    });
     let accept = action_button(
-        confirm.action,
-        ButtonVariant::Destructive,
+        confirm.action.clone(),
+        if confirm.destructive {
+            ButtonVariant::Destructive
+        } else {
+            ButtonVariant::Default
+        },
         ButtonSize::Default,
         Some("confirm-accept".into()),
         || true,
         move || actions::accept_confirm(state),
     );
-    let ViewNode::Element(cancel_button) = &cancel else {
+    // Focus Cancel, so Enter does not run the action by accident; a
+    // message focuses its one button.
+    let ViewNode::Element(focused) = cancel.as_ref().unwrap_or(&accept) else {
         unreachable!("a button is one element");
     };
-    let cancel_button = cancel_button.clone();
+    let focused = focused.clone();
+    let cancel = cancel.unwrap_or(ViewNode::Empty);
+    // div-gap: 30. No `<pre>` element (an unknown tag fails at run time),
+    // so a div takes its monospace font and preserved white space.
+    let detail = match confirm.detail.clone() {
+        Some(text) => view! {
+            <div
+                id="confirm-detail"
+                style:box-sizing="border-box"
+                style:max-height="240px"
+                style:overflow="auto"
+                style:margin-top="12px"
+                style:padding="8px 12px"
+                style:border-radius="6px"
+                style:font-family="Geist Mono"
+                style:font-size="12px"
+                style:line-height="18px"
+                style:white-space="pre-wrap"
+                style:background-color={c.muted}
+            >
+                {text}
+            </div>
+        },
+        None => ViewNode::Empty,
+    };
     let scrim = view! {
         <div
             id="confirm"
@@ -104,6 +138,7 @@ fn dialog(state: State, document: Document) -> ViewNode {
                 <div id="confirm-body" style:margin-top="8px" style:color={c.muted_foreground}>
                     {confirm.body.clone()}
                 </div>
+                {detail}
                 <div style:display="flex" style:justify-content="flex-end" style:gap="8px" style:margin-top="24px">
                     {cancel}
                     {accept}
@@ -112,12 +147,12 @@ fn dialog(state: State, document: Document) -> ViewNode {
         </div>
     };
     if let ViewNode::Element(root) = &scrim {
-        // Once the dialog is in the document: keep input in it and focus
-        // Cancel, so Enter does not run the action by accident.
+        // Once the dialog is in the document: keep input in it and move
+        // focus into it.
         let root = root.clone();
         div::task::spawn_local(async move {
             let _ = document.set_modal_root(Some(&root));
-            let _ = cancel_button.focus();
+            let _ = focused.focus();
         })
         .detach();
     }

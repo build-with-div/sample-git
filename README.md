@@ -9,7 +9,10 @@ stage or unstage files while reading their diffs, discard changes (after a
 confirmation), commit, browse history (each commit's message, metadata,
 changed files and their diffs), and work with branches: switch, create one
 at HEAD, delete a merged one (after a confirmation), and check out a remote
-branch as a tracking branch. Fetch, pull and push come next. See
+branch as a tracking branch. Fetch, Pull (`--ff-only`) and Push run from
+the toolbar with progress and Cancel in the status bar; a failure keeps
+git's whole output under Details, and a branch without an upstream is
+published only after a question. See
 [docs/design.md](docs/design.md) for the plan and
 [docs/framework-gaps.md](docs/framework-gaps.md) for the Div gaps found so far.
 
@@ -20,6 +23,8 @@ branch as a tracking branch. Fetch, pull and push come next. See
 ![The History tab: a commit's message, metadata, changed files and one file's diff](docs/screenshots/history.png)
 
 ![The Branches tab: a new branch name, local branches with their upstreams, and remote branches](docs/screenshots/branches.png)
+
+![A pull that cannot fast-forward: the status bar's Details shows git's full output](docs/screenshots/pull-failed.png)
 
 ## Build and run
 

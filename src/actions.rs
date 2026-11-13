@@ -3,9 +3,11 @@
 //! them into the state's signals.
 
 use crate::git::diff::{self, Source};
-use crate::git::{branch, log, repo, status, Error, Git};
+use crate::git::remote::{self, Progress};
+use crate::git::{branch, log, repo, status, Cancel, Error, Git};
 use crate::state::{
-    Branches, Confirm, DiffState, FileSelection, History, Loadable, Repo, State, Summary,
+    Branches, Confirm, DiffState, FileSelection, History, Loadable, RemoteFailure, RemoteOp, Repo,
+    State, Summary,
 };
 use crate::store;
 use div::task::{spawn_blocking, spawn_local};
@@ -350,7 +352,13 @@ fn load_branches(state: State, path: PathBuf) {
     let git = state.git.get();
     spawn_local(async move {
         let probe = path.clone();
-        let result = spawn_blocking(move || branch::branches(&git, &probe)).await;
+        let result = spawn_blocking(move || {
+            Ok::<_, Error>((
+                branch::branches(&git, &probe)?,
+                remote::remotes(&git, &probe)?,
+            ))
+        })
+        .await;
         let mut branches = state.branches.get();
         // Another repository was selected meanwhile.
         if branches.repo.as_deref() != Some(path.as_path()) {
@@ -358,8 +366,9 @@ fn load_branches(state: State, path: PathBuf) {
         }
         branches.loading = false;
         match result {
-            Ok(list) => {
+            Ok((list, remotes)) => {
                 branches.list = list;
+                branches.remotes = remotes;
                 branches.error = None;
             }
             Err(error) => branches.error = Some(error.summary()),
@@ -420,8 +429,10 @@ pub fn ask_delete_branch(state: State, name: String) {
                branch, or into the current branch when it has none. An \
                unmerged branch is kept, and the status bar says why."
             .to_owned(),
+        detail: None,
         action: "Delete branch".to_owned(),
-        run: Rc::new(move || delete_branch(state, name.clone())),
+        destructive: true,
+        run: Some(Rc::new(move || delete_branch(state, name.clone()))),
     }));
 }
 
@@ -429,6 +440,179 @@ fn delete_branch(state: State, name: String) {
     mutate(state, format!("Deleted branch {name}"), move |git, repo| {
         branch::delete(git, repo, &name)
     });
+}
+
+/// Which remote command [`run_remote`] runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RemoteCommand {
+    Fetch,
+    Pull,
+    Push,
+}
+
+impl RemoteCommand {
+    fn running(self) -> &'static str {
+        match self {
+            RemoteCommand::Fetch => "Fetching",
+            RemoteCommand::Pull => "Pulling",
+            RemoteCommand::Push => "Pushing",
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            RemoteCommand::Fetch => "Fetch",
+            RemoteCommand::Pull => "Pull",
+            RemoteCommand::Push => "Push",
+        }
+    }
+}
+
+/// `git fetch --all --prune`.
+pub fn fetch(state: State) {
+    if state.can_fetch() {
+        run_remote(state, RemoteCommand::Fetch, None, "Fetched".to_owned());
+    }
+}
+
+/// `git pull --ff-only` from the current branch's upstream.
+pub fn pull(state: State) {
+    let Some(status) = state.selected_status() else {
+        return;
+    };
+    if let (true, Some(upstream)) = (state.can_pull(), status.branch.upstream) {
+        run_remote(
+            state,
+            RemoteCommand::Pull,
+            None,
+            format!("Pulled {upstream}"),
+        );
+    }
+}
+
+/// `git push` of the current branch to its upstream. A branch without one
+/// is published to the first remote (`origin` first) after a question.
+pub fn push(state: State) {
+    let Some(status) = state.selected_status() else {
+        return;
+    };
+    let Some(branch) = status.branch.head else {
+        return;
+    };
+    if !state.can_push() {
+        return;
+    }
+    if let Some(upstream) = status.branch.upstream {
+        let done = format!("Pushed {branch} to {upstream}");
+        run_remote(state, RemoteCommand::Push, None, done);
+        return;
+    }
+    let Some(remote) = state.remotes().into_iter().next() else {
+        return;
+    };
+    state.confirm.set(Some(Confirm {
+        title: format!("Publish {branch}?"),
+        body: format!(
+            "{branch} has no upstream branch yet. Push it to {remote} and track \
+             {remote}/{branch} from now on?"
+        ),
+        detail: Some(format!("git push -u {remote} {branch}")),
+        action: "Publish branch".to_owned(),
+        destructive: false,
+        run: Some(Rc::new(move || {
+            let done = format!("Published {branch} to {remote}");
+            let target = Some((remote.clone(), branch.clone()));
+            run_remote(state, RemoteCommand::Push, target, done);
+        })),
+    }));
+}
+
+/// Stop the running fetch, pull or push.
+pub fn cancel_remote(state: State) {
+    if let Some(op) = state.remote_op.get() {
+        op.cancel.cancel();
+    }
+}
+
+/// Show the full output of the fetch, pull or push that failed.
+pub fn show_remote_failure(state: State) {
+    if let Some(failure) = state.shown_failure() {
+        state.confirm.set(Some(Confirm {
+            title: failure.title,
+            body: failure.status,
+            detail: Some(failure.log),
+            action: "Close".to_owned(),
+            destructive: false,
+            run: None,
+        }));
+    }
+}
+
+/// Run a fetch, pull or push on the selected repository with progress in
+/// the status bar and a Cancel button, then refresh. A failure keeps git's
+/// whole output for Details.
+fn run_remote(
+    state: State,
+    command: RemoteCommand,
+    set_upstream: Option<(String, String)>,
+    done: String,
+) {
+    let Some(repo) = state.selected.get() else {
+        return;
+    };
+    if state.busy.get() {
+        return;
+    }
+    let git = state.git.get();
+    let cancel = Cancel::new();
+    state.busy.set(true);
+    state.progress.set(String::new());
+    state.remote_op.set(Some(RemoteOp {
+        label: command.running().to_owned(),
+        cancel: cancel.clone(),
+    }));
+    // Progress comes from the blocking thread.
+    let progress = state.progress.sender();
+    spawn_local(async move {
+        let path = repo.clone();
+        let result = spawn_blocking(move || {
+            let on_progress = |update: Progress| progress.send(update.line);
+            match command {
+                RemoteCommand::Fetch => remote::fetch(&git, &path, &cancel, on_progress),
+                RemoteCommand::Pull => remote::pull(&git, &path, &cancel, on_progress),
+                RemoteCommand::Push => {
+                    let target = set_upstream
+                        .as_ref()
+                        .map(|(remote, branch)| (remote.as_str(), branch.as_str()));
+                    remote::push(&git, &path, target, &cancel, on_progress)
+                }
+            }
+        })
+        .await;
+        state.busy.set(false);
+        state.remote_op.set(None);
+        match result {
+            Ok(_) => state.status.set(done),
+            Err(Error::Cancelled) => state.status.set(format!("{} cancelled", command.name())),
+            Err(error) => {
+                let summary = error.summary();
+                let log = match &error {
+                    Error::Failed {
+                        command, stderr, ..
+                    } => format!("$ {command}\n{}", stderr.trim_end()),
+                    other => other.summary(),
+                };
+                state.remote_failure.set(Some(RemoteFailure {
+                    status: summary.clone(),
+                    title: format!("{} failed", command.name()),
+                    log,
+                }));
+                state.status.set(summary);
+            }
+        }
+        refresh(state, repo);
+    })
+    .detach();
 }
 
 /// Run `operation` on the selected repository on the blocking pool, with
@@ -551,8 +735,10 @@ pub fn ask_discard(state: State, path: String, untracked: bool) {
     state.confirm.set(Some(Confirm {
         title,
         body: body.to_owned(),
+        detail: None,
         action: action.to_owned(),
-        run: Rc::new(move || discard(state, path.clone(), untracked)),
+        destructive: true,
+        run: Some(Rc::new(move || discard(state, path.clone(), untracked))),
     }));
 }
 
@@ -572,11 +758,13 @@ pub fn cancel_confirm(state: State) {
     state.confirm.set(None);
 }
 
-/// Close the confirmation dialog and run its action.
+/// Close the dialog and run its action, if it has one.
 pub fn accept_confirm(state: State) {
     if let Some(confirm) = state.confirm.get() {
         state.confirm.set(None);
-        (confirm.run)();
+        if let Some(run) = confirm.run {
+            run();
+        }
     }
 }
 
