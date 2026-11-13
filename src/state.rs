@@ -1,7 +1,10 @@
 //! App state shared by the views and the menu. Signals are cheap handles,
 //! so the struct is `Copy`.
 
+use crate::git::Git;
 use div::prelude::*;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 /// The tabs of the main area.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,29 +35,142 @@ impl Tab {
     }
 }
 
+/// A repository in the list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Repo {
+    pub path: PathBuf,
+    /// The folder name, shown in the list.
+    pub name: String,
+}
+
+impl Repo {
+    pub fn new(path: PathBuf) -> Self {
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        Self { path, name }
+    }
+}
+
+/// What the list shows under a repository's name.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Summary {
+    #[default]
+    Loading,
+    Ready {
+        /// The branch, or `None` when HEAD is detached.
+        branch: Option<String>,
+        changes: usize,
+        ahead: u32,
+        behind: u32,
+    },
+    /// git failed, for example because the folder is gone.
+    Error(String),
+}
+
+impl Summary {
+    /// `main · 3 changes · ↑2 ↓1`, `dev · clean`, `detached · clean`.
+    pub fn line(&self) -> String {
+        match self {
+            Summary::Loading => "Loading…".into(),
+            Summary::Error(message) => message.clone(),
+            Summary::Ready {
+                branch,
+                changes,
+                ahead,
+                behind,
+            } => {
+                let mut parts = vec![branch.clone().unwrap_or_else(|| "detached".into())];
+                parts.push(match changes {
+                    0 => "clean".into(),
+                    1 => "1 change".into(),
+                    n => format!("{n} changes"),
+                });
+                match (ahead, behind) {
+                    (0, 0) => {}
+                    (a, 0) => parts.push(format!("↑{a}")),
+                    (0, b) => parts.push(format!("↓{b}")),
+                    (a, b) => parts.push(format!("↑{a} ↓{b}")),
+                }
+                parts.join(" · ")
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct State {
     /// The selected tab, as its [`Tab::value`].
     pub tab: Signal<String>,
     /// What the last operation reported, shown in the status bar.
     pub status: Signal<String>,
+    /// How git is run. Tests point it at fixture configuration.
+    pub git: Signal<Git>,
+    /// Where the repository list is saved; `None` keeps it in memory.
+    pub store: Signal<Option<PathBuf>>,
+    pub repos: Signal<Vec<Repo>>,
+    pub summaries: Signal<HashMap<PathBuf, Summary>>,
+    pub selected: Signal<Option<PathBuf>>,
 }
 
 impl State {
+    /// State with the user's git and no saved list.
     pub fn new() -> Self {
+        Self::with(Git::new(), None)
+    }
+
+    pub fn with(git: Git, store: Option<PathBuf>) -> Self {
         Self {
             tab: create_signal(Tab::Changes.value().to_owned()),
             status: create_signal("Ready".to_owned()),
+            git: create_signal(git),
+            store: create_signal(store),
+            repos: create_signal(Vec::new()),
+            summaries: create_signal(HashMap::new()),
+            selected: create_signal(None),
         }
     }
 
     pub fn select_tab(&self, tab: Tab) {
         self.tab.set(tab.value().to_owned());
     }
+
+    pub fn summary(&self, path: &Path) -> Summary {
+        self.summaries.get().get(path).cloned().unwrap_or_default()
+    }
+
+    /// The selected repository, if any.
+    pub fn selected_repo(&self) -> Option<Repo> {
+        let selected = self.selected.get()?;
+        self.repos
+            .get()
+            .into_iter()
+            .find(|repo| repo.path == selected)
+    }
 }
 
 impl Default for State {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summary_lines() {
+        let ready = |branch: Option<&str>, changes, ahead, behind| Summary::Ready {
+            branch: branch.map(str::to_owned),
+            changes,
+            ahead,
+            behind,
+        };
+        assert_eq!(ready(Some("main"), 0, 0, 0).line(), "main · clean");
+        assert_eq!(ready(Some("dev"), 1, 2, 0).line(), "dev · 1 change · ↑2");
+        assert_eq!(ready(None, 3, 2, 1).line(), "detached · 3 changes · ↑2 ↓1");
+        assert_eq!(Summary::Loading.line(), "Loading…");
     }
 }

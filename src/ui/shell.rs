@@ -1,12 +1,15 @@
 //! The window layout: sidebar, toolbar, tabs and status bar.
 
+use crate::actions;
+use crate::ui::sidebar::sidebar;
 use crate::ui::style::{colors, Slot, SlotProps};
+use crate::ui::widgets::action_button;
 use crate::{State, Tab};
 use div::prelude::*;
 use div_components::primitives::{TabsOptions, TabsState};
 use div_components::{
-    register_fonts, Button, ButtonProps, ButtonSize, ButtonVariant, Tabs, TabsContent,
-    TabsContentProps, TabsList, TabsListProps, TabsProps, TabsTrigger, TabsTriggerProps,
+    register_fonts, ButtonSize, ButtonVariant, Tabs, TabsContent, TabsContentProps, TabsList,
+    TabsListProps, TabsProps, TabsTrigger, TabsTriggerProps,
 };
 use std::rc::Rc;
 
@@ -28,7 +31,7 @@ pub fn root(state: State) -> ViewNode {
             style:background-color={c.background}
         >
             <div style:display="flex" style:flex-grow="1" style:min-height="0">
-                <Slot view={sidebar()} />
+                <Slot view={sidebar(state)} />
                 <Slot view={main_area(state)} />
             </div>
             <Slot view={status_bar(state)} />
@@ -36,42 +39,51 @@ pub fn root(state: State) -> ViewNode {
     }
 }
 
-fn sidebar() -> ViewNode {
+fn toolbar(state: State) -> ViewNode {
     let c = colors();
+    let refresh = action_button(
+        "Refresh",
+        ButtonVariant::Outline,
+        ButtonSize::Sm,
+        Some("refresh".into()),
+        move || state.selected.get().is_some(),
+        move || actions::refresh_all(state),
+    );
     view! {
         <div
-            id="sidebar"
+            id="toolbar"
             style:display="flex"
-            style:flex-direction="column"
-            style:box-sizing="border-box"
-            style:width="240px"
+            style:align-items="center"
+            style:gap="12px"
+            style:height="48px"
             style:flex-shrink="0"
-            style:background-color={c.sidebar}
-            style:border-right-width="1"
-            style:border-right-style="solid"
-            style:border-right-color={c.border_line}
+            style:padding="0 16px"
+            style:border-bottom-width="1"
+            style:border-bottom-style="solid"
+            style:border-bottom-color={c.border_line}
         >
+            <div id="repo-title" style:font-weight="600" style:white-space="nowrap">
+                {state
+                    .selected_repo()
+                    .map(|repo| repo.name)
+                    .unwrap_or_else(|| "No repository selected".into())}
+            </div>
             <div
-                style:padding="12px 12px 8px 12px"
-                style:font-size="12px"
-                style:font-weight="600"
+                id="repo-summary"
+                style:flex-grow="1"
+                style:min-width="0"
                 style:color={c.muted_foreground}
+                style:overflow="hidden"
+                style:text-overflow="ellipsis"
+                style:white-space="nowrap"
             >
-                "REPOSITORIES"
+                {state
+                    .selected
+                    .get()
+                    .map(|path| state.summary(&path).line())
+                    .unwrap_or_default()}
             </div>
-            // Enabled by the repository-list change. div-gap: 7: every
-            // Button prop is given, because optional props are not filled.
-            <div style:display="flex" style:gap="8px" style:padding="0 12px 12px 12px">
-                <Button variant={ButtonVariant::Outline} size={ButtonSize::Sm} disabled={true}>
-                    "Add"
-                </Button>
-                <Button variant={ButtonVariant::Outline} size={ButtonSize::Sm} disabled={true}>
-                    "Scan folder"
-                </Button>
-            </div>
-            <div id="repo-empty" style:padding="12px" style:color={c.muted_foreground}>
-                "No repositories yet. Add one, or scan a folder for them."
-            </div>
+            <Slot view={refresh} />
         </div>
     }
 }
@@ -96,7 +108,10 @@ fn main_area(state: State) -> ViewNode {
         view! {
             <TabsContent state={tabs.clone()} value={tab.value()}>
                 <div style:padding="24px 0" style:color={c.muted_foreground}>
-                    {format!("{}: select a repository.", tab.label())}
+                    {match state.selected_repo() {
+                        Some(repo) => format!("{}: {}", tab.label(), repo.path.display()),
+                        None => "Select a repository in the list.".to_owned(),
+                    }}
                 </div>
             </TabsContent>
         }
@@ -109,19 +124,7 @@ fn main_area(state: State) -> ViewNode {
             style:flex-grow="1"
             style:min-width="0"
         >
-            <div
-                id="toolbar"
-                style:display="flex"
-                style:align-items="center"
-                style:height="48px"
-                style:padding="0 16px"
-                style:border-bottom-width="1"
-                style:border-bottom-style="solid"
-                style:border-bottom-color={c.border_line}
-                style:font-weight="600"
-            >
-                "No repository selected"
-            </div>
+            <Slot view={toolbar(state)} />
             <div style:padding="12px 16px 0 16px" style:flex-grow="1" style:min-height="0">
                 <Tabs state={tabs.clone()}>
                     <TabsList state={tabs.clone()}>

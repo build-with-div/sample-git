@@ -16,6 +16,13 @@ pub fn toplevel(git: &Git, path: &Path) -> Result<Option<PathBuf>, Error> {
     }
     let text = String::from_utf8_lossy(&output.stdout);
     let top = text.trim();
+    // git prints `E:/work/app` on Windows; use the platform's separators
+    // so the path matches what the file dialog and `read_dir` give.
+    let top = if cfg!(windows) {
+        top.replace('/', "\\")
+    } else {
+        top.to_owned()
+    };
     Ok((!top.is_empty()).then(|| PathBuf::from(top)))
 }
 

@@ -12,6 +12,7 @@ fn mount(state: State) -> TestApp {
 fn the_shell_shows_its_empty_states() {
     let ui = mount(State::new());
     assert!(ui.find_text("No repository selected").is_some());
+    assert!(ui.find_text("Select a repository in the list.").is_some());
     assert!(ui
         .find_text("No repositories yet. Add one, or scan a folder for them.")
         .is_some());
@@ -25,7 +26,8 @@ fn clicking_a_tab_selects_it() {
     let history = ui.by_text("History");
     ui.click(&history);
     assert_eq!(state.tab.get(), Tab::History.value());
-    assert!(ui.find_text("History: select a repository.").is_some());
+    let selected = history.get_attribute("aria-selected").unwrap();
+    assert_eq!(selected.as_deref(), Some("true"));
 }
 
 #[test]
