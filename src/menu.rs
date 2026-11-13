@@ -30,6 +30,22 @@ pub fn app_menu(state: State) -> Menu {
                     .accelerator(Accelerator::new(Modifiers::NONE, Key::Function(5)))
                     .on_select(move || actions::refresh_all(state)),
             )
+            .separator()
+            .item(
+                MenuItem::new("&Fetch")
+                    .enabled(move || state.can_fetch())
+                    .on_select(move || actions::fetch(state)),
+            )
+            .item(
+                MenuItem::new("&Pull")
+                    .enabled(move || state.can_pull())
+                    .on_select(move || actions::pull(state)),
+            )
+            .item(
+                MenuItem::new("P&ush")
+                    .enabled(move || state.can_push())
+                    .on_select(move || actions::push(state)),
+            )
         })
         .submenu("&View", |menu| {
             let keys = [Key::Char('1'), Key::Char('2'), Key::Char('3')];

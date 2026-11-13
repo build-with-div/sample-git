@@ -41,6 +41,8 @@ Pinned Div: `92ea25a0`.
 | [26](#26-layout-time-grows-exponentially-with-nested-flex-containers) | Layout time grows exponentially with nested flex containers | Chromium LayoutNG flex: cached layout results, so nested flexbox lays out in linear time | engine: layout | blocked the diff view; workaround | open |
 | [27](#27-a-textarea-ignores-its-padding-and-greys-no-placeholder) | A textarea ignores its padding and greys no placeholder | `<textarea>` box model (padding inside the text box) and the `::placeholder` pseudo-element with Chromium's grey UA color | engine: forms | workaround | open |
 | [28](#28-dynchild-wraps-its-content-in-a-span) | `DynChild` wraps its content in a `<span>` | Dynamic children that add no element, as JSX `{cond ? a : b}` in React, Solid and Leptos (markers or comment nodes, not a box) | framework: reactive | workaround | open |
+| [29](#29-testapp-input-runs-all-work-to-the-end) | `TestApp` input runs all work to the end | Input that returns once the event is handled, with explicit waits, as Testing Library's `user-event` with `waitFor`/`findBy*` or Playwright's auto-waiting assertions | framework: testing | tests only | open |
+| [30](#30-no-pre-element-and-unknown-tags-fail-at-run-time) | No `<pre>` element, and unknown tags fail at run time | HTML's elements with Chromium's UA stylesheet (`pre`, `code`, `kbd`, `b`, `i`, `blockquote`, `dl`, `dialog`, …), and `HTMLUnknownElement` (an inline box) for any other name | engine: dom, UA style; framework: elements | workaround | open |
 
 Gaps the design's probe found that the app has not met in code yet, because
 v1 left the feature out:
@@ -369,3 +371,48 @@ Area: framework, reactive views (`DynChild`).
 
 Workaround (`ui/history.rs`): the span returned by `DynChild` gets
 `display: contents`, so its children lay out as children of the pane.
+
+## 29. `TestApp` input runs all work to the end
+
+Tried: a headless test that clicks Fetch, then clicks Cancel while the
+fetch runs.
+
+Happened: `TestApp::click` (and `type_text`, `press`) dispatches the
+event and then calls `run_until_idle`, which waits for every task and
+blocking job, so the fetch has finished before the test can click
+Cancel. There is no way to dispatch input and return, then wait for a
+condition. In a browser test, Testing Library's `user-event` returns once
+the event is handled and `waitFor`/`findBy*` wait for the result;
+Playwright's assertions wait on their own.
+
+Area: framework, testing (`div::testing::TestApp`).
+
+Workaround (`tests/ui_remote.rs`): the test starts the fetch with
+`actions::fetch(state)`, which does not run the queued work, then clicks
+Cancel; the fetch sees the cancel before it starts git. Marked
+`div-gap: 29`.
+
+## 30. No `<pre>` element, and unknown tags fail at run time
+
+Tried (the dialog that shows git's full output):
+
+```rust
+view! { <pre style:font-family="Geist Mono" style:white-space="pre-wrap">{text}</pre> }
+```
+
+Happened: it compiles, and building the view panics with
+`failed to create element: UnknownTag("pre")`. divui's element table
+(`tag_definition` in `crates/divui/src/element.rs` at the pinned commit)
+has no `pre`, `code`, `kbd`, `samp`, `b`, `i`, `u`, `s`, `mark`,
+`blockquote`, `dl`/`dt`/`dd`, `figure`, `time`, `sub`/`sup` or `dialog`.
+In HTML, `<pre>` is a block with a monospace font and `white-space: pre`
+(Chromium's UA stylesheet), and an element name the parser does not know
+becomes an `HTMLUnknownElement` that renders as an inline box, so markup
+ported from a web app never fails to build. A tag literal that Div cannot
+build could also be a `view!` compile error rather than a panic.
+
+Area: engine (DOM element set, UA stylesheet); framework (element
+creation in `view!`).
+
+Workaround (`ui/confirm.rs`): a `<div>` with `font-family: Geist Mono`
+and `white-space: pre-wrap`. Marked `div-gap: 30`.

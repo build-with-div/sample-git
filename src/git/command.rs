@@ -154,6 +154,10 @@ impl Git {
         cancel: &Cancel,
         mut on_line: impl FnMut(&str),
     ) -> Result<String, Error> {
+        // Cancelled before it started: do not start it.
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
         let mut child = self.spawn(Some(repo), args, Access::Write)?;
         let mut stderr = child.stderr.take().expect("stderr is piped");
         let mut stdout = child.stdout.take().expect("stdout is piped");

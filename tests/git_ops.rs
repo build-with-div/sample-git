@@ -307,12 +307,9 @@ fn a_cancelled_command_reports_cancelled() {
     let (_, clone) = fixture.clone_with_origin("app");
     let cancel = Cancel::new();
     cancel.cancel();
+    // Cancelled before it starts, the command does not run.
     let result = remote::fetch(&fixture.git, &clone, &cancel, |_| {});
-    // A local fetch can finish before the kill lands; either way nothing hangs.
-    assert!(
-        matches!(result, Err(Error::Cancelled) | Ok(_)),
-        "{result:?}"
-    );
+    assert_eq!(result, Err(Error::Cancelled));
 }
 
 #[test]

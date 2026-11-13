@@ -61,6 +61,30 @@ fn toolbar(state: State) -> ViewNode {
         move || state.selected.get().is_some(),
         move || actions::refresh_all(state),
     );
+    let fetch = action_button(
+        "Fetch",
+        ButtonVariant::Outline,
+        ButtonSize::Sm,
+        Some("fetch".into()),
+        move || state.can_fetch(),
+        move || actions::fetch(state),
+    );
+    let pull = action_button(
+        "Pull",
+        ButtonVariant::Outline,
+        ButtonSize::Sm,
+        Some("pull".into()),
+        move || state.can_pull(),
+        move || actions::pull(state),
+    );
+    let push = action_button(
+        "Push",
+        ButtonVariant::Outline,
+        ButtonSize::Sm,
+        Some("push".into()),
+        move || state.can_push(),
+        move || actions::push(state),
+    );
     view! {
         <div
             id="toolbar"
@@ -95,6 +119,11 @@ fn toolbar(state: State) -> ViewNode {
                     .get()
                     .map(|path| state.summary(&path).line())
                     .unwrap_or_default()}
+            </div>
+            <div style:display="flex" style:gap="8px">
+                {fetch}
+                {pull}
+                {push}
             </div>
             {refresh}
         </div>
@@ -207,6 +236,43 @@ fn placeholder(state: State, tab: Tab) -> ViewNode {
 
 fn status_bar(state: State) -> ViewNode {
     let c = colors();
+    // A 20px button fits the 24px bar.
+    let small = |button: ViewNode| {
+        if let ViewNode::Element(element) = &button {
+            element
+                .apply_style(&style! { height: 20px; padding: 0 8px; font-size: 12px })
+                .expect("style a status bar button");
+        }
+        button
+    };
+    let details = Show(
+        move || state.shown_failure().is_some(),
+        || ViewNode::Empty,
+        move || {
+            small(action_button(
+                "Details",
+                ButtonVariant::Ghost,
+                ButtonSize::Xs,
+                Some("remote-details".into()),
+                || true,
+                move || actions::show_remote_failure(state),
+            ))
+        },
+    );
+    let cancel = Show(
+        move || state.remote_op.get().is_some(),
+        || ViewNode::Empty,
+        move || {
+            small(action_button(
+                "Cancel",
+                ButtonVariant::Outline,
+                ButtonSize::Xs,
+                Some("cancel-remote".into()),
+                || true,
+                move || actions::cancel_remote(state),
+            ))
+        },
+    );
     view! {
         <div
             id="status-bar"
@@ -226,8 +292,20 @@ fn status_bar(state: State) -> ViewNode {
             style:border-top-width="1"
             style:border-top-style="solid"
             style:border-top-color={c.border_line}
+            style:gap="8px"
         >
-            {state.status.get()}
+            <div
+                id="status-text"
+                style:flex-grow="1"
+                style:min-width="0"
+                style:overflow="hidden"
+                style:text-overflow="ellipsis"
+                style:white-space="nowrap"
+            >
+                {state.status_line()}
+            </div>
+            {details}
+            {cancel}
         </div>
     }
 }
