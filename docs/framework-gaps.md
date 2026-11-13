@@ -19,6 +19,7 @@ Pinned Div: `03573e7d`.
 | [3](#3-dynamic-style-values-need-typed-values) | Dynamic style values need typed values | framework: macros | workaround | open |
 | [6](#6-for-and-show-cannot-be-children-in-view) | `For`/`Show` cannot be children in `view!` | framework: macros | workaround | open |
 | [7](#7-optional-component-props-are-not-filled) | Optional component props are not filled | framework: macros | workaround | open |
+| [24](#24-a-fresh-lockfile-does-not-build-on-linux) | A fresh lockfile does not build on Linux | framework: packaging | blocks Linux builds | open |
 
 ## 3. Dynamic style values need typed values
 
@@ -68,3 +69,25 @@ Happened: the props struct literal needs every field (`size` and `disabled`
 missing). RFC 0003 (c) is changing `view!` to a builder that fills them.
 
 Workaround: every prop is given at each call site.
+
+## 24. A fresh lockfile does not build on Linux
+
+Tried: depending on `divui` (features `desktop`, `menu`, `dialog`) by git
+`rev` and letting Cargo resolve a new `Cargo.lock`.
+
+Happened: on ubuntu-24.04 `zbus` fails to compile with 8 errors
+(`E0425`/`E0433` from the `#[interface]` macro). `div-platform` pins
+`zbus = "=5.13.0"` (its `dialog` feature), but zbus 5.13.0 asks only for
+`zbus_macros ^5.13.0` and `zvariant ^5.9.0`, so a fresh resolve takes
+`zbus_macros` 5.19.0 and `zvariant` 5.15.1, which do not build with it.
+Div's own `Cargo.lock` holds `zbus_macros` 5.13.0, `zbus_names` 4.3.1 and
+`zvariant` 5.9.0, so Div's CI never meets this mix. Windows builds are not
+affected: zbus is Linux-only.
+
+Area: framework, packaging (`div-platform`). Div could pin the macro crates
+beside zbus (`zbus_macros = "=5.13.0"`, `zvariant = "=5.9.0"`) or move to a
+zbus release that builds with the latest macros.
+
+Workaround: `Cargo.lock` was replaced with Div's `Cargo.lock` at the pinned
+commit and Cargo pruned it to this app's dependencies. Bumping the pin
+should repeat this. Marked `div-gap: 24` in `Cargo.toml`.

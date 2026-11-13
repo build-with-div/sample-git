@@ -14,6 +14,8 @@ path = "src/main.rs"
 # Div is pinned to one commit. Bump `rev` here and in the patch table below
 # together, deliberately, when a framework fix this app needs lands.
 [dependencies]
+# div-gap: 24. Cargo.lock is seeded from Div's own lock; a fresh resolve picks
+# zbus_macros 5.19 beside zbus 5.13, which does not build on Linux.
 divui = { git = "https://github.com/build-with-div/div", rev = "03573e7db3d160699058e8bdf121f41856143a0b", features = ["desktop", "menu", "dialog"] }
 div-components = { git = "https://github.com/build-with-div/div", rev = "03573e7db3d160699058e8bdf121f41856143a0b" }
 
