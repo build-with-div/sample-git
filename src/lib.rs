@@ -3,6 +3,7 @@
 //! `main.rs` opens the window; the views, menu and state live here so the
 //! headless tests in `tests/` can mount them.
 
+pub mod git;
 pub mod menu;
 pub mod state;
 pub mod ui;
