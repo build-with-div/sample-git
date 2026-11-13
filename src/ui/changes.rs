@@ -4,7 +4,7 @@ use crate::actions;
 use crate::git::status::{Change, Entry};
 use crate::state::{FileSelection, State};
 use crate::ui::diff_view::{diff_view, DiffPane};
-use crate::ui::style::{colors, Slot, SlotProps};
+use crate::ui::style::colors;
 use crate::ui::widgets::action_button;
 use div::prelude::*;
 use div_components::{ButtonSize, ButtonVariant};
@@ -32,10 +32,10 @@ pub fn changes_panel(state: State) -> ViewNode {
                 style:border-right-color={c.border_line}
                 style:padding-right="8px"
             >
-                <Slot view={section(state, true)} />
-                <Slot view={section(state, false)} />
+                {section(state, true)}
+                {section(state, false)}
             </div>
-            <Slot view={commit_box(state)} />
+            {commit_box(state)}
             <div
                 id="diff-pane"
                 style:position="absolute"
@@ -45,7 +45,7 @@ pub fn changes_panel(state: State) -> ViewNode {
                 style:left="320px"
                 style:overflow="auto"
             >
-                <Slot view={changes_diff(state)} />
+                {changes_diff(state)}
             </div>
         </div>
     }
@@ -158,8 +158,8 @@ fn commit_box(state: State) -> ViewNode {
                 }
             }}
         >
-            <Slot view={message} />
-            <Slot view={placeholder} />
+            {message}
+            {placeholder}
         </div>
     };
     let commit = action_button(
@@ -187,7 +187,7 @@ fn commit_box(state: State) -> ViewNode {
             style:border-right-style="solid"
             style:border-right-color={c.border_line}
         >
-            <Slot view={editor} />
+            {editor}
             <div
                 style:display="flex"
                 style:align-items="center"
@@ -195,7 +195,7 @@ fn commit_box(state: State) -> ViewNode {
                 style:margin-top="8px"
             >
                 <div style:font-size="12px" style:color={c.muted_foreground}>"Ctrl+Enter to commit"</div>
-                <Slot view={commit} />
+                {commit}
             </div>
         </div>
     }
@@ -260,9 +260,9 @@ fn section(state: State, staged: bool) -> ViewNode {
                 style:color={c.muted_foreground}
             >
                 <div style:flex-grow="1">{format!("{title} ({})", entries().len())}</div>
-                <Slot view={bulk} />
+                {bulk}
             </div>
-            <Slot view={rows} />
+            {rows}
         </div>
     }
 }
@@ -382,8 +382,8 @@ fn file_row(state: State, entry: Entry, staged: bool) -> ViewNode {
             >
                 {label.clone()}
             </span>
-            <Slot view={discard} />
-            <Slot view={toggle} />
+            {discard}
+            {toggle}
         </div>
     }
 }

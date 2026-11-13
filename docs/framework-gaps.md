@@ -20,7 +20,7 @@ works on Div unchanged. The "Removed by" column names that feature. Where
 no web feature applies (macros, packaging, desktop services), it names the
 JSX, Solid/Leptos or Electron/Tauri behavior the app expects instead.
 
-Pinned Div: `565db46a`.
+Pinned Div: `92ea25a0`.
 
 | # | Gap | Removed by | Area | Severity | Status |
 | --- | --- | --- | --- | --- | --- |
@@ -28,7 +28,7 @@ Pinned Div: `565db46a`.
 | [3](#3-dynamic-style-values-need-typed-values) | Dynamic style values need typed values | CSS text for dynamic values, as `element.style.setProperty(name, value)` parses it | framework: macros | workaround | open |
 | [4](#4-common-style-literals-are-rejected) | Common style literals are rejected | Chromium's CSS parsing: shorthands (`inset`, `flex`, `border`, `border-width`/`-style`/`-color`), `<length>` border widths (`1px`), `resize`, `cursor: col-resize` | engine: style; framework: macros | workaround | open |
 | [5](#5-onclick-on-a-component-is-silently-dropped) | `on:click` on a component is silently dropped | JSX-style event props on components (fixed by forwarding) | framework: macros; components | — | fixed in `565db46a` |
-| [6](#6-for-and-show-cannot-be-children-in-view) | `For`/`Show` cannot be children in `view!` | JSX expression children: a view (element, array, `.map()` result) as a `{expr}` child, as in React and Leptos | framework: macros | workaround | open |
+| [6](#6-for-and-show-cannot-be-children-in-view) | `For`/`Show` cannot be children in `view!` | JSX expression children: a view (element, array, `.map()` result) as a `{expr}` child, as in React and Leptos | framework: macros | — | fixed in `92ea25a0` |
 | [7](#7-optional-component-props-are-not-filled) | Optional component props are not filled | JSX props with defaults: omitted optional props take their default | framework: macros | workaround | open |
 | [8](#8-no-virtualized-list) | No virtualized list | CSS `content-visibility: auto` with `contain-intrinsic-size`, and layout fast enough for react-window-style windowing (absolute rows driven by `scroll` events) | framework; components | workaround: long diffs are cut | open |
 | [10](#10-keys-are-matched-by-code) | Keys are matched by code | `KeyboardEvent.key` and `ctrlKey`/`metaKey` (UI Events); key names landed in Div #27, workaround not removed yet | framework: events | workaround | open |
@@ -141,15 +141,15 @@ view! { <div>{For(move || items.get(), |s| s.clone(), |s| view! { <div>{s}</div>
 Happened: a `{expr}` child is always converted with `ToString` into a text
 node, so a `ViewNode` cannot be a child (here it does not compile).
 
-Workaround: a component that returns its prop, `ui::style::Slot`:
+Workaround (removed): a component that returned its prop, `ui::style::Slot`,
+written `<Slot view={For(...)} />`. The capability probe showed keyed `For`
+and `Show` update correctly inside it.
 
-```rust
-#[component]
-pub fn Slot(view: ViewNode) -> ViewNode { view }
-// <Slot view={For(...)} />
-```
-
-The capability probe showed keyed `For` and `Show` update correctly inside it.
+Fixed in Div `92ea25a0` (div#30, `6fdb0d6`): a `{expr}` child that is a
+view (`ViewNode`, `Vec<ViewNode>`, `Option<ViewNode>`, `For`, `Show`) is
+mounted as itself, and one that implements `ToString` stays reactive text.
+Every `<Slot view={x} />` is now `{x}`, and the commit details pass their
+`Vec<ViewNode>` rows directly; the UI tests pass unchanged.
 
 ## 7. Optional component props are not filled
 

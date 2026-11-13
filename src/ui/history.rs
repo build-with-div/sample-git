@@ -6,7 +6,7 @@ use crate::git::log::{ChangedFile, Commit, CommitDetails};
 use crate::state::{Loadable, State};
 use crate::ui::changes::letter_color;
 use crate::ui::diff_view::{diff_view, DiffPane};
-use crate::ui::style::{colors, Slot, SlotProps};
+use crate::ui::style::colors;
 use crate::ui::widgets::action_button;
 use div::prelude::*;
 use div_components::{ButtonSize, ButtonVariant};
@@ -32,7 +32,7 @@ pub fn history_panel(state: State) -> ViewNode {
                 style:border-right-style="solid"
                 style:border-right-color={c.border_line}
             >
-                <Slot view={commit_list(state)} />
+                {commit_list(state)}
             </div>
             <div
                 id="commit-pane"
@@ -43,7 +43,7 @@ pub fn history_panel(state: State) -> ViewNode {
                 style:left="320px"
                 style:overflow="auto"
             >
-                <Slot view={commit_pane(state)} />
+                {commit_pane(state)}
             </div>
         </div>
     }
@@ -78,15 +78,15 @@ fn commit_list(state: State) -> ViewNode {
             );
             view! {
                 <div style:padding="8px">
-                    <Slot view={more} />
+                    {more}
                 </div>
             }
         },
     );
     view! {
         <div style:padding-top="4px">
-            <Slot view={rows} />
-            <Slot view={footer} />
+            {rows}
+            {footer}
         </div>
     }
 }
@@ -247,7 +247,7 @@ fn commit_details(state: State, details: CommitDetails) -> ViewNode {
                 </div>
                 <div id="commit-body" style:margin-top="4px" style:white-space="pre-wrap">{body}</div>
                 <div style:margin-top="12px">
-                    <Slot view={ViewNode::Fragment(meta)} />
+                    {meta}
                 </div>
                 <div
                     style:margin-top="16px"
@@ -258,10 +258,10 @@ fn commit_details(state: State, details: CommitDetails) -> ViewNode {
                     {format!("Changed files ({count})")}
                 </div>
                 <div style:margin-top="4px" style:margin-bottom="12px">
-                    <Slot view={ViewNode::Fragment(files)} />
+                    {files}
                 </div>
             </div>
-            <Slot view={diff} />
+            {diff}
         </div>
     }
 }
