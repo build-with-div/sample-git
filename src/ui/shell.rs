@@ -1,6 +1,7 @@
 //! The window layout: sidebar, toolbar, tabs and status bar.
 
 use crate::actions;
+use crate::ui::branches::branches_panel;
 use crate::ui::changes::changes_panel;
 use crate::ui::confirm::confirm_dialog;
 use crate::ui::history::history_panel;
@@ -127,7 +128,11 @@ fn main_area(state: State) -> ViewNode {
                 move || placeholder(state, tab),
                 move || history_panel(state),
             ),
-            _ => placeholder(state, tab),
+            Tab::Branches => Show(
+                move || state.selected.get().is_some(),
+                move || placeholder(state, tab),
+                move || branches_panel(state),
+            ),
         };
         let content = view! {
             <TabsContent state={tabs.clone()} value={tab.value()}>

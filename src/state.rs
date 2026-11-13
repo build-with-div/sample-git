@@ -1,6 +1,7 @@
 //! App state shared by the views and the menu. Signals are cheap handles,
 //! so the struct is `Copy`.
 
+use crate::git::branch::Branch;
 use crate::git::diff::FileDiff;
 use crate::git::log::{Commit, CommitDetails};
 use crate::git::status::Status;
@@ -146,6 +147,34 @@ pub struct History {
     pub error: Option<String>,
 }
 
+/// The Branches tab's lists: the selected repository's local and remote
+/// branches.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Branches {
+    /// The repository the branches belong to.
+    pub repo: Option<PathBuf>,
+    /// Local branches by name, then remote branches by name.
+    pub list: Vec<Branch>,
+    pub loading: bool,
+    pub error: Option<String>,
+}
+
+impl Branches {
+    pub fn local(&self) -> impl Iterator<Item = &Branch> {
+        self.list.iter().filter(|branch| !branch.remote)
+    }
+
+    pub fn remote(&self) -> impl Iterator<Item = &Branch> {
+        self.list.iter().filter(|branch| branch.remote)
+    }
+
+    /// The local branch whose upstream is the remote branch `name`.
+    pub fn tracked_by(&self, name: &str) -> Option<&Branch> {
+        self.local()
+            .find(|branch| branch.upstream.as_deref() == Some(name))
+    }
+}
+
 /// A question the confirmation dialog asks before an action that can lose
 /// work.
 #[derive(Clone)]
@@ -190,6 +219,9 @@ pub struct State {
     pub commit_file: Signal<Option<String>>,
     pub commit_diff: Signal<DiffState>,
     pub commit_full_diff: Signal<bool>,
+    pub branches: Signal<Branches>,
+    /// The name typed into "New branch".
+    pub new_branch: Signal<String>,
 }
 
 impl State {
@@ -220,6 +252,8 @@ impl State {
             commit_file: create_signal(None),
             commit_diff: create_signal(DiffState::Empty),
             commit_full_diff: create_signal(false),
+            branches: create_signal(Branches::default()),
+            new_branch: create_signal(String::new()),
         }
     }
 
@@ -248,6 +282,12 @@ impl State {
             && self
                 .selected_status()
                 .is_some_and(|status| status.staged().next().is_some())
+    }
+
+    /// Whether "Create branch" can run: a name is typed and no other
+    /// command is running.
+    pub fn can_create_branch(&self) -> bool {
+        !self.busy.get() && !self.new_branch.get().trim().is_empty()
     }
 
     /// The selected repository, if any.

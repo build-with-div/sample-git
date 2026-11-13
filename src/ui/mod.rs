@@ -1,5 +1,6 @@
 //! The views. [`root`] is the whole window.
 
+mod branches;
 mod changes;
 mod confirm;
 pub mod diff_view;
