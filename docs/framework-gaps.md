@@ -13,14 +13,14 @@ when Div fixes the gap: `git grep -n "div-gap: 6"`.
 Areas: **engine** (style, layout, paint, text), **framework** (divui,
 platform, macros, CLI), **components** (div-components).
 
-Pinned Div: `03573e7d`.
+Pinned Div: `565db46a`.
 
 | # | Gap | Area | Severity | Status |
 | --- | --- | --- | --- | --- |
 | [1](#1-no-hover-styling) | No `:hover` styling | engine: style | workaround | open |
 | [3](#3-dynamic-style-values-need-typed-values) | Dynamic style values need typed values | framework: macros | workaround | open |
 | [4](#4-common-style-literals-are-rejected) | Common style literals are rejected | engine: style; framework: macros | workaround | open |
-| [5](#5-onclick-on-a-component-is-silently-dropped) | `on:click` on a component is silently dropped | framework: macros; components | workaround | open |
+| [5](#5-onclick-on-a-component-is-silently-dropped) | `on:click` on a component is silently dropped | framework: macros; components | — | fixed in `565db46a` |
 | [6](#6-for-and-show-cannot-be-children-in-view) | `For`/`Show` cannot be children in `view!` | framework: macros | workaround | open |
 | [7](#7-optional-component-props-are-not-filled) | Optional component props are not filled | framework: macros | workaround | open |
 | [8](#8-no-virtualized-list) | No virtualized list | framework; components | workaround: long diffs are cut | open |
@@ -100,9 +100,14 @@ Happened: it compiles and the handler never runs. `view!` keeps only
 error, and `div_components::Button` has no click prop. (Probe: 0 clicks;
 a wrapping `<span on:click>` received the bubbled click.)
 
-Workaround: `ui::widgets::action_button` builds the `Button`, takes the
-element out of the returned `ViewNode::Element`, and adds the listener with
-`Element::on("click", …)`.
+Workaround (removed): `ui::widgets::action_button` built the `Button`, took
+the element out of the returned `ViewNode::Element`, and added the listener
+with `Element::on("click", …)`.
+
+Fixed in Div `565db46a` (div#29, `b1cf9d58`): `view!` forwards `on:`
+attributes on a component tag to the element it returns. `action_button`
+now writes `<Button on:click={…}>`; its tests (every button in
+`tests/ui_*.rs`) pass unchanged.
 
 ## 6. `For` and `Show` cannot be children in `view!`
 
