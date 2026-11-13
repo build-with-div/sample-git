@@ -7,9 +7,6 @@ use div_components::{Button, ButtonProps, ButtonSize, ButtonVariant};
 /// A div-components `Button` that runs `on_click` and is enabled while
 /// `enabled()` is true.
 ///
-/// div-gap: 5. `on:click` on a component tag is dropped by `view!` and
-/// `Button` has no click prop, so the listener goes on the button element
-/// itself.
 /// div-gap: 7. Every `ButtonProps` field is given; optional props are not
 /// filled in yet.
 /// div-gap: 23. `Button`'s `disabled` is fixed when it is built and
@@ -23,25 +20,27 @@ pub fn action_button(
     enabled: impl Fn() -> bool + 'static,
     on_click: impl Fn() + 'static,
 ) -> ViewNode {
-    let node = Button(ButtonProps {
-        variant,
-        size,
-        disabled: false,
-        children: vec![ViewNode::Text(label.into())],
-    });
+    let label = label.into();
+    let node = view! {
+        <Button
+            variant={variant}
+            size={size}
+            disabled={false}
+            on:click={move |event: &Event| {
+                // A button inside a clickable row acts alone.
+                event.stop_propagation();
+                on_click();
+            }}
+        >
+            {label}
+        </Button>
+    };
     let ViewNode::Element(button) = &node else {
         unreachable!("Button builds one element");
     };
     if let Some(id) = id {
         button.set_attribute("id", &id).expect("set id");
     }
-    button
-        .on("click", move |event: &Event| {
-            // A button inside a clickable row acts alone.
-            event.stop_propagation();
-            on_click();
-        })
-        .expect("listen for clicks");
     let weak = button.downgrade();
     create_effect(move || {
         let enabled = enabled();
